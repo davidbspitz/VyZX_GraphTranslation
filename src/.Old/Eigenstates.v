@@ -7,9 +7,12 @@ Theorem ket_plus_state : ZX_semantics (Z_Spider 0 1 0) = √ 2 .* hadamard × (k
 Proof.
   simpl.
   unfold_spider.
-  autorewrite with
+  autorewrite with Cexp_db.
+  solve_matrix.
 Qed.
 
+Theorem ket_minus_state : ZX_semantics (Z_Spider 0 1 PI) = √ 2 .* hadamard × (ket 1).
+Proof.
   simpl.
   unfold_spider.
   autorewrite with Cexp_db.
