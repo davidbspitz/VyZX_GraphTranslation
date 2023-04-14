@@ -37,7 +37,10 @@
 From Coq Require Import Lists.List.
 From Coq Require Import Nat.
 Import ListNotations.
-Require Import Permutation.
+Require Import CoreData.CoreData.
+From Coq Require Import Sorting.Permutation.
+Require Import Ingest.SQIRIngest.
+Require Import Lia.
 
 Notation "a >? b" := (Nat.ltb b a)
   (at level 70, only parsing) : nat_scope.
@@ -63,21 +66,21 @@ Definition indexed_list_correct {A : Type} (il : indexed_list A) : Prop :=
   indexed_list_correct_aux il (pred (length il)).
 
 Lemma rev_seq_S : 
-  forall len start, rev (seq start (S len)) = [start + len] ++ rev (seq start len).
+  forall (len : nat) (start : nat), rev (seq start (S len)) = [(add start len)] ++ rev (seq start len).
 Proof.
-intros; rewrite seq_S; rewrite rev_app_distr; auto.
+    intros; rewrite seq_S; rewrite rev_app_distr; auto.
 Qed.
 
 Lemma indexed_list_correct_lemma : 
   forall (A : Type) (l : list A), indexed_list_correct (create_indexed_list l).
 Proof.
-intros. induction l; unfold create_indexed_list, indexed_list_correct in *; simpl.
-- exact I.
-- simpl. destruct (length l) eqn:E. simpl; split; auto.
-  apply length_zero_iff_nil in E; subst; auto.
-  rewrite rev_seq_S; simpl; split; rewrite combine_length in *; rewrite app_length in *; 
-  rewrite rev_length in *; rewrite seq_length in *; simpl in *;
-  rewrite E in *; rewrite PeanoNat.Nat.add_1_r in *; rewrite PeanoNat.Nat.min_id in *; simpl in *; auto.
+    intros. induction l; unfold create_indexed_list, indexed_list_correct in *; simpl.
+    - auto.
+    - simpl. destruct (length l) eqn:E. simpl; split; auto.
+    apply length_zero_iff_nil in E; subst; auto.
+    rewrite rev_seq_S; simpl; split; rewrite combine_length in *; rewrite app_length in *; 
+    rewrite rev_length in *; rewrite seq_length in *; simpl in *;
+    rewrite E in *; rewrite PeanoNat.Nat.add_1_r in *; rewrite PeanoNat.Nat.min_id in *; simpl in *; auto.
 Qed.
 
 Definition swap_list : Type := list nat.
@@ -132,7 +135,46 @@ Fixpoint batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : i
   | s :: ss => batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss
   end.
 
-Definition test_l := [53; 185; 96; 31; 142; 77; 193; 168; 12; 55; 23; 110; 182; 171; 147].
+
+(* Constructing the swap structure *)
+
+(* Fixpoint build_swap_at_index_aux (i len : nat) : ZX len len.
+Proof.
+induction len.
+- apply Empty.
+- destruct len.
+  + apply Wire.
+  +  *)
+
+Lemma build_swap_at_index_aux_aux : 
+  forall i len, le 2 len -> le (plus 2 i) len -> 
+    len = plus (sub len (plus 2 i)) (plus 2 i).
+Proof.
+  lia.
+Qed.
+
+Definition build_swap_at_index_aux (i : nat) : ZX (2 + i) (2 + i) :=
+  pad_bot i Swap.
+
+Fixpoint build_swap_at_index (i len : nat) : ZX len len.
+Proof.
+  destruct ((plus 2 i) <=? len) eqn:Hi; destruct (2 <=? len) eqn:Hl.
+  - apply Nat.leb_le in Hi, Hl.
+    apply 
+      (cast len len
+        (build_swap_at_index_aux_aux i len Hl Hi)
+        (build_swap_at_index_aux_aux i len Hl Hi)
+        (pad_top (sub len (plus 2 i)) (build_swap_at_index_aux i))).
+  - apply (n_wire len).
+  - apply (n_wire len).
+  - apply (n_wire len).
+Defined.
+
+Compute (build_swap_at_index 3 5).
+
+
+
+(* Definition test_l := [53; 185; 96; 31; 142; 77; 193; 168; 12; 55; 23; 110; 182; 171; 147]. *)
 
 (* Compute bubblesort test_l.
 
