@@ -190,12 +190,11 @@ Proof.
 Defined.
 
 
-Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [1%nat;2%nat;3%nat]).
+(* Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [1%nat;2%nat;3%nat]). *)
 
 
 (* Things to do:
-  Check order of all operations, may need reverses to have swaps be proper
-  Join with swap list generator
+  Look at order of all operations, may need reverses to have swaps be proper
   Potential optimizations: one bubblesort not two, not having one swap at a time in column, etc *)
 
 (* Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7). *)
