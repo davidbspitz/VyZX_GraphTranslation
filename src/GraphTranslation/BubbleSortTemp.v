@@ -170,7 +170,16 @@ Proof.
   - apply (n_wire len).
 Defined.
 
-Compute (build_swap_at_index 3 5).
+(* Putting it all together *)
+
+Definition arbitrary_swap_from_swaplist (sl : swap_list) (len : nat) : ZX len len :=
+  fold_left (fun cur_zx r => cur_zx ⟷ (build_swap_at_index r len))
+            sl (n_wire len).
+
+
+Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7).
+
+(* Compute (build_swap_at_index 3 5). *)
 
 
 
