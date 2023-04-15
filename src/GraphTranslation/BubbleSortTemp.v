@@ -115,6 +115,9 @@ Fixpoint bubblesort_aux (gas : nat) (l : indexed_list nat) (sl : swap_list) : in
 Definition bubblesort (l : list nat) : indexed_list nat * swap_list :=
   bubblesort_aux (pred (length l)) (create_indexed_list l) [].
 
+Definition generate_swap_list (l : list nat) : swap_list := 
+  snd (bubblesort l).
+
 Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_list nat :=
   match il with
   | [] => []
@@ -176,8 +179,26 @@ Definition arbitrary_swap_from_swaplist (sl : swap_list) (len : nat) : ZX len le
   fold_left (fun cur_zx r => cur_zx ⟷ (build_swap_at_index r len))
             sl (n_wire len).
 
+Definition create_arbitrary_swap (l l' : list nat) : ZX (length l) (length l).
+Proof.
+  destruct (length l =? length l') eqn:E.
+  - rewrite Nat.eqb_eq in E.
+    eapply Compose.
+      + eapply (arbitrary_swap_from_swaplist (generate_swap_list l) (length l)).
+      + rewrite E; eapply (arbitrary_swap_from_swaplist (rev (generate_swap_list l')) (length l')).
+  - apply (n_wire (length l)).
+Defined.
 
-Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7).
+
+Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [1%nat;2%nat;3%nat]).
+
+
+(* Things to do:
+  Check order of all operations, may need reverses to have swaps be proper
+  Join with swap list generator
+  Potential optimizations: one bubblesort not two, not having one swap at a time in column, etc *)
+
+(* Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7). *)
 
 (* Compute (build_swap_at_index 3 5). *)
 
