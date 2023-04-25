@@ -55,7 +55,7 @@ Fixpoint indexed_list_to_list {A : Type} (il : indexed_list A) : list A :=
   | [] => []
   | (x, i) :: xs => x :: indexed_list_to_list xs
   end.
-
+(* 
 Fixpoint indexed_list_correct_aux {A : Type} (il : indexed_list A) (i : nat) : Prop :=
   match il with
   | (_, n) :: ils => n = i /\ (indexed_list_correct_aux ils (pred i))
@@ -81,7 +81,7 @@ Proof.
     rewrite rev_seq_S; simpl; split; rewrite combine_length in *; rewrite app_length in *; 
     rewrite rev_length in *; rewrite seq_length in *; simpl in *;
     rewrite E in *; rewrite PeanoNat.Nat.add_1_r in *; rewrite PeanoNat.Nat.min_id in *; simpl in *; auto.
-Qed.
+Qed. *)
 
 Definition swap_list : Type := list nat.
 
@@ -115,6 +115,8 @@ Fixpoint bubblesort_aux (gas : nat) (l : indexed_list nat) (sl : swap_list) : in
 Definition bubblesort (l : list nat) : indexed_list nat * swap_list :=
   bubblesort_aux (pred (length l)) (create_indexed_list l) [].
 
+Definition mylist := [2%nat; 9%nat; 6%nat; 8%nat; 1%nat; 5%nat; 4%nat; 7%nat].
+
 Definition generate_swap_list (l : list nat) : swap_list := 
   snd (bubblesort l).
 
@@ -131,6 +133,19 @@ Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_l
         (x, i') :: swap_adjacent_in_ind_list xs i
     end
   end.
+
+Fixpoint debug_batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : list (indexed_list nat) :=
+  match sl with
+  | [] => []
+  | s :: ss => (swap_adjacent_in_ind_list il s) :: (debug_batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss)
+  end.
+
+Definition prettify (l : list (indexed_list nat)) : list (list nat) :=
+  map (fun l' => List.map fst l') l.
+
+Compute (generate_swap_list mylist).
+
+Compute prettify (debug_batch_swap_adj_in_ind_list (fst (bubblesort mylist)) (snd (bubblesort mylist))).
 
 Fixpoint batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : indexed_list nat :=
   match sl with
@@ -161,13 +176,9 @@ Definition build_swap_at_index_aux (i : nat) : ZX (2 + i) (2 + i) :=
 
 Fixpoint build_swap_at_index (i len : nat) : ZX len len.
 Proof.
-  destruct ((plus 2 i) <=? len) eqn:Hi; destruct (2 <=? len) eqn:Hl.
-  - apply Nat.leb_le in Hi, Hl.
-    apply 
-      (cast len len
-        (build_swap_at_index_aux_aux i len Hl Hi)
-        (build_swap_at_index_aux_aux i len Hl Hi)
-        (pad_top (sub len (plus 2 i)) (build_swap_at_index_aux i))).
+  destruct (dec ((plus 2 i) <=? len)); destruct (dec (2 <=? len)).
+  - eapply cast; try(eapply (build_swap_at_index_aux_aux i len); try (eapply Nat.leb_le; eauto)).
+    apply (pad_top (sub len (plus 2 i)) (build_swap_at_index_aux i)).
   - apply (n_wire len).
   - apply (n_wire len).
   - apply (n_wire len).
@@ -181,25 +192,28 @@ Definition arbitrary_swap_from_swaplist (sl : swap_list) (len : nat) : ZX len le
 
 Definition create_arbitrary_swap (l l' : list nat) : ZX (length l) (length l).
 Proof.
-  destruct (length l =? length l') eqn:E.
-  - rewrite Nat.eqb_eq in E.
-    eapply Compose.
+  destruct (dec (length l =? length l')).
+  - eapply Compose.
       + eapply (arbitrary_swap_from_swaplist (generate_swap_list l) (length l)).
-      + rewrite E; eapply (arbitrary_swap_from_swaplist (rev (generate_swap_list l')) (length l')).
+      + eapply cast. 
+        * eapply Nat.eqb_eq; eauto.
+        * eapply Nat.eqb_eq; eauto.
+        * eapply (arbitrary_swap_from_swaplist (rev (generate_swap_list l')) (length l')).
   - apply (n_wire (length l)).
 Defined.
 
 
-(* Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [1%nat;2%nat;3%nat]). *)
+Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
 
 
 (* Things to do:
   Look at order of all operations, may need reverses to have swaps be proper
-  Potential optimizations: one bubblesort not two, not having one swap at a time in column, etc *)
+  Potential optimizations: one bubblesort not two, not having one swap at a time in column, etc
+  replace rewrites with nat decidability *)
 
 (* Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7). *)
 
-(* Compute (build_swap_at_index 3 5). *)
+Compute (build_swap_at_index 3 5).
 
 
 
