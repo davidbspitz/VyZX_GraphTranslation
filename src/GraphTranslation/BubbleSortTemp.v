@@ -1,61 +1,32 @@
-(* do I need to cite this *)
-
-(* Preloaded.v
-
-   The key definitions and notations presented in this file are
-   adapted from the Software Foundations series, an excellent
-   resource for learning Coq:
-   https://softwarefoundations.cis.upenn.edu/current/index.html
-
-   The copyright notice of the series is reproduced below as
-   follows:
-
-   Copyright (c) 2019
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in
-   all copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-   THE SOFTWARE. *)
-
-(* Volume 3: Verified Functional Algorithms *)
-
-(* Basic Techniques for Permutations and Ordering (Perm) *)
-
 From Coq Require Import Lists.List.
 From Coq Require Import Nat.
+From Coq Require Import Arith.EqNat.
+From Coq Require Import Arith.Compare_dec.
 Import ListNotations.
 Require Import CoreData.CoreData.
-From Coq Require Import Sorting.Permutation.
+(* From Coq Require Import Sorting.Permutation. *)
 Require Import Ingest.SQIRIngest.
 Require Import Lia.
 
-Notation "a >? b" := (Nat.ltb b a)
-  (at level 70, only parsing) : nat_scope.
+(*  This entire section has the goal of constructing any general 
+    ZX swap structure that can swap between any two permutations.
+    The ZX swap only swaps adjacent indices, so a bubblesort is needed.
+*)
 
+(*  This is more general than a correct indexed list, but we can have a 
+    well formedness property instead *)
 Definition indexed_list (A : Type) : Type := list (A * nat).
 
+(*  Provides indices for an existing list invreverse order
+    so the element closest to nil is index 0
+    [1, 2, 3] -> [(1, 2), (2, 1), (3, 0)]*)
 Definition create_indexed_list {A : Type} (l : list A) : indexed_list A :=
   combine l (rev (seq 0 (length l))).
 
-Fixpoint indexed_list_to_list {A : Type} (il : indexed_list A) : list A :=
-  match il with
-  | [] => []
-  | (x, i) :: xs => x :: indexed_list_to_list xs
-  end.
-(* 
+Definition indexed_list_to_list {A : Type} (il : indexed_list A) : list A :=
+  map (fun l' => fst l') il.
+
+(* Correctness/WF proof *)
 Fixpoint indexed_list_correct_aux {A : Type} (il : indexed_list A) (i : nat) : Prop :=
   match il with
   | (_, n) :: ils => n = i /\ (indexed_list_correct_aux ils (pred i))
@@ -71,7 +42,7 @@ Proof.
     intros; rewrite seq_S; rewrite rev_app_distr; auto.
 Qed.
 
-Lemma indexed_list_correct_lemma : 
+Lemma create_indexed_list_WF : 
   forall (A : Type) (l : list A), indexed_list_correct (create_indexed_list l).
 Proof.
     intros. induction l; unfold create_indexed_list, indexed_list_correct in *; simpl.
@@ -81,10 +52,16 @@ Proof.
     rewrite rev_seq_S; simpl; split; rewrite combine_length in *; rewrite app_length in *; 
     rewrite rev_length in *; rewrite seq_length in *; simpl in *;
     rewrite E in *; rewrite PeanoNat.Nat.add_1_r in *; rewrite PeanoNat.Nat.min_id in *; simpl in *; auto.
-Qed. *)
+Qed.
 
+(* Again, this is general as this should really be bounded by the length
+  of the list it is referring to, it should only contain indices that
+  can represent a swap in list l -> [0, length l) *)
 Definition swap_list : Type := list nat.
 
+(* I grabbed this from here: https://codeberg.org/mathprocessing/coq-examples/src/branch/master/sorts/bubblesort.v
+    There is a verified version here which could replace this:
+    https://github.com/holmuk/Sorticoq/blob/master/src/BubbleSort.v *)
 Fixpoint bubblesort_pass (l : indexed_list nat) (sl : swap_list) : (indexed_list nat * swap_list * bool) :=
   match l with
   | [] => ([], sl, false)
@@ -92,12 +69,11 @@ Fixpoint bubblesort_pass (l : indexed_list nat) (sl : swap_list) : (indexed_list
       match bubblesort_pass xs sl with
       | ([], sl', b) => ([x], sl', b)
       | (x' :: xs', sl', b) =>
-          if (fst x) >? (fst x')
+          if Nat.ltb (fst x') (fst x) 
             then (((fst x'), (snd x)) :: ((fst x), (snd x')) :: xs', ((snd x') :: sl'), true)
             else (x :: x' :: xs', sl', b)
       end
   end.
-
 
 Fixpoint bubblesort_aux (gas : nat) (l : indexed_list nat) (sl : swap_list) : indexed_list nat * swap_list :=
   match gas with
@@ -112,14 +88,15 @@ Fixpoint bubblesort_aux (gas : nat) (l : indexed_list nat) (sl : swap_list) : in
       end
   end.
 
+(* Needs proof of correctness *)
 Definition bubblesort (l : list nat) : indexed_list nat * swap_list :=
   bubblesort_aux (pred (length l)) (create_indexed_list l) [].
-
-Definition mylist := [2%nat; 9%nat; 6%nat; 8%nat; 1%nat; 5%nat; 4%nat; 7%nat].
 
 Definition generate_swap_list (l : list nat) : swap_list := 
   snd (bubblesort l).
 
+(* The correct swapping procedure. Given index i, swaps the ith and i + 1th index. *)
+(* 0 <= i < len(il), with index conventions as above *)
 Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_list nat :=
   match il with
   | [] => []
@@ -134,7 +111,8 @@ Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_l
     end
   end.
 
-Fixpoint debug_batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : list (indexed_list nat) :=
+
+(* Fixpoint debug_batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : list (indexed_list nat) :=
   match sl with
   | [] => []
   | s :: ss => (swap_adjacent_in_ind_list il s) :: (debug_batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss)
@@ -143,27 +121,29 @@ Fixpoint debug_batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_lis
 Definition prettify (l : list (indexed_list nat)) : list (list nat) :=
   map (fun l' => List.map fst l') l.
 
+Definition mylist := [2%nat; 9%nat; 6%nat; 8%nat; 1%nat; 5%nat; 4%nat; 7%nat].
+
 Compute (generate_swap_list mylist).
 
-Compute prettify (debug_batch_swap_adj_in_ind_list (fst (bubblesort mylist)) (snd (bubblesort mylist))).
+Compute prettify (debug_batch_swap_adj_in_ind_list (create_indexed_list mylist) (snd (bubblesort mylist))).
 
 Fixpoint batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : indexed_list nat :=
   match sl with
   | [] => il
   | s :: ss => batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss
-  end.
+  end. *)
 
 
-(* Constructing the swap structure *)
-
-(* Fixpoint build_swap_at_index_aux (i len : nat) : ZX len len.
-Proof.
-induction len.
-- apply Empty.
-- destruct len.
-  + apply Wire.
-  +  *)
-
+(*  Constructing the swap structure *)
+(*  From a swap index, the idea is to create a stack of wires with a 
+    swap at the correct index. The convention used is imagining the 
+    wire permutation indicies increasing from bottom to top in a stack.
+    [(wire_1, 2), (wire_2, 1), (wire_3), 0] --> [wire_1, 2]
+                                                [wire_2, 1]
+                                                [wire_3, 0]
+    A swap index of 1 would swap wire_1 and wire_2 above. 
+    A swap index of 0 would swap wire_2 and wire_3 above. 
+*)                                              
 Lemma build_swap_at_index_aux_aux : 
   forall i len, le 2 len -> le (plus 2 i) len -> 
     len = plus (sub len (plus 2 i)) (plus 2 i).
@@ -171,47 +151,45 @@ Proof.
   lia.
 Qed.
 
-Definition build_swap_at_index_aux (i : nat) : ZX (2 + i) (2 + i) :=
-  pad_bot i Swap.
 
 Fixpoint build_swap_at_index (i len : nat) : ZX len len.
 Proof.
-  destruct (dec ((plus 2 i) <=? len)); destruct (dec (2 <=? len)).
-  - eapply cast; try(eapply (build_swap_at_index_aux_aux i len); try (eapply Nat.leb_le; eauto)).
-    apply (pad_top (sub len (plus 2 i)) (build_swap_at_index_aux i)).
-  - apply (n_wire len).
-  - apply (n_wire len).
-  - apply (n_wire len).
+  destruct (le_lt_dec (plus 2 i) len); destruct (le_lt_dec 2 len).
+  - eapply cast. 
+    + eapply (build_swap_at_index_aux_aux i len).
+      * exact l0.
+      * exact l.
+    + eapply (build_swap_at_index_aux_aux i len).
+      * exact l0.
+      * exact l.
+    + eapply (pad_top (sub len (plus 2 i)) (pad_bot i Swap)).
+  - exact (n_wire len).
+  - exact (n_wire len).
+  - exact (n_wire len).
 Defined.
 
-(* Putting it all together *)
+(* Putting it all together, to find the sequence of arbitrary swaps between
+    two arbitrary permutations, two bubble sorts are done for each and the
+    second is reversed, which creates a path between the permutations *)
 
+(* Preserves left-right order (head-first list order) of swap list *)
 Definition arbitrary_swap_from_swaplist (sl : swap_list) (len : nat) : ZX len len :=
   fold_left (fun cur_zx r => cur_zx ⟷ (build_swap_at_index r len))
             sl (n_wire len).
 
 Definition create_arbitrary_swap (l l' : list nat) : ZX (length l) (length l).
 Proof.
-  destruct (dec (length l =? length l')).
+  destruct (eq_nat_decide (length l) (length l')).
   - eapply Compose.
       + eapply (arbitrary_swap_from_swaplist (generate_swap_list l) (length l)).
-      + eapply cast. 
-        * eapply Nat.eqb_eq; eauto.
-        * eapply Nat.eqb_eq; eauto.
+      + eapply cast.
+        * eapply eq_nat_eq; exact e.
+        * eapply eq_nat_eq; exact e.
         * eapply (arbitrary_swap_from_swaplist (rev (generate_swap_list l')) (length l')).
-  - apply (n_wire (length l)).
+  - exact (n_wire (length l)).
 Defined.
 
-
 Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
-
-
-(* Things to do:
-  Look at order of all operations, may need reverses to have swaps be proper
-  Potential optimizations: one bubblesort not two, not having one swap at a time in column, etc
-  replace rewrites with nat decidability *)
-
-(* Compute (arbitrary_swap_from_swaplist ([1%nat;5%nat;3%nat]) 7). *)
 
 Compute (build_swap_at_index 3 5).
 
