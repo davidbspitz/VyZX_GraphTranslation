@@ -59,6 +59,7 @@ Qed.
   can represent a swap in list l -> [0, length l) *)
 Definition swap_list : Type := list nat.
 
+(* Attribute this properly *)
 (* I grabbed this from here: https://codeberg.org/mathprocessing/coq-examples/src/branch/master/sorts/bubblesort.v
     There is a verified version here which could replace this:
     https://github.com/holmuk/Sorticoq/blob/master/src/BubbleSort.v *)
