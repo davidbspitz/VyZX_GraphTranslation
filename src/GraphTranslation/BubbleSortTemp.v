@@ -239,73 +239,124 @@ Record zx_node := mk_node
   angle : R 
 }.
 
+Definition dummy_node := (mk_node 0%nat X_typ R0).
+(* 
 Definition eqb_zx_node (node1 node2 : zx_node) : bool :=
-  (id_no node1) =? (id_no node2).
+  (id_no node1) =? (id_no node2). *)
 
 Record zx_graph := mk_graph
-{ inputs : list zx_node;
-  outputs : list zx_node;
-  nodes : list zx_node;
-  edges : list (zx_node * zx_node)
+{ mapping : list zx_node;
+  inputs : list nat;
+  outputs : list nat;
+  nodes : list nat;
+  edges : list (nat * nat)
 }.
 
-Fixpoint inb_zx_node_list (l : list zx_node) (x : zx_node) : bool :=
+Definition get_zx_node_by_id (G : zx_graph) (n : nat) : zx_node :=
+  match (find (fun node => (id_no node) =? n) (mapping G)) with
+  | Some x => x
+  | _ => dummy_node (* Could change this*)
+  end
+.
+
+Definition inb_zx_node_list (l : list nat) (x : nat) : bool :=
+  if (in_dec Nat.eq_dec x l) then true else false.
+
+Fixpoint remove_one {A} (eq_dec : (forall x y : A, {x = y}+{x <> y})) (x : A) (l : list A) : list A := 
   match l with
-  | [] => false
-  | x'::xs => orb (eqb_zx_node x x') (inb_zx_node_list xs x) 
+      | [] => []
+      | x'::xs => if (eq_dec x x') then xs else x'::(remove_one eq_dec x xs)
   end.
 
-Definition zx_node_list_to_ids (l : list zx_node) : list nat :=
-  map (fun n => id_no n) l.
+Fixpoint largest_subset_and_rest_pool (lsplit lpool : list nat) : list nat * list nat  :=
+  match lsplit with
+  | [] => ([], lpool)
+  | x::xs =>  if (inb_zx_node_list lpool x) then 
+                match (largest_subset_and_rest_pool xs (remove_one Nat.eq_dec x lpool)) with
+                | (l1, l2) => (x :: l1, l2)
+                end
+              else
+                match (largest_subset_and_rest_pool xs lpool) with
+                | (l1, l2) => (l1, l2)
+                end
+  end.
 
-Definition get_connections (G : zx_graph) (node : zx_node) : list (zx_node * zx_node) :=
-  filter (fun n => orb (eqb_zx_node (fst n) node) (eqb_zx_node (snd n) node)) (edges G).
+Fixpoint largest_subset_and_rest_split (lsplit lpool : list nat) : list nat * list nat  :=
+  match lsplit with
+  | [] => ([], [])
+  | x::xs =>  if (inb_zx_node_list lpool x) then 
+                match (largest_subset_and_rest_split xs (remove_one Nat.eq_dec x lpool)) with
+                | (l1, l2) => (x :: l1, l2)
+                end
+              else
+                match (largest_subset_and_rest_split xs lpool) with
+                | (l1, l2) => (l1, x::l2)
+                end
+  end.
 
-Definition get_neighbors (G : zx_graph) (node : zx_node) : list zx_node :=
-  map (fun n => if (eqb_zx_node (fst n) node) then (snd n) else fst n) (get_connections G node).
+(* Test more? *)
+(* Compute (largest_subset_and_rest_split [1%nat; 2%nat; 3%nat; 4%nat; 4%nat] [4%nat; 5%nat; 4%nat; 3%nat]). *)
 
-Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node * list zx_node :=
-  partition (fun n => (inb_zx_node_list cur_state n)) (get_neighbors G cur_node).
+(* Definition zx_node_list_to_ids (l : list zx_node) : list nat :=
+  map (fun n => id_no n) l. *)
 
-Definition get_cur_inputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+
+Definition get_connections (G : zx_graph) (node : nat) : list (nat * nat) :=
+  filter (fun n => orb (node =? (fst n)) (node =? (snd n))) (edges G).
+
+Definition get_neighbors (G : zx_graph) (node : nat) : list nat :=
+  map (fun n => if ((fst n) =? node) then (snd n) else fst n) (get_connections G node).
+
+(* Check on pair order here *)
+Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat * list nat :=
+  largest_subset_and_rest_split (get_neighbors G cur_node) cur_state.
+  
+Definition get_cur_inputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   fst (distribute_inputs_outputs G cur_state cur_node).
 
-Definition get_cur_outputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+Definition get_cur_outputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   snd (distribute_inputs_outputs G cur_state cur_node).
 
-Definition split_cur_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node * list zx_node :=
-  partition (fun n => (inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) cur_state.
-
-Definition get_goal_ordering (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+Definition split_cur_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat * list nat :=
+  largest_subset_and_rest_split cur_state (get_cur_inputs G cur_state cur_node).
+  
+Definition get_goal_ordering (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   fst (split_cur_state G cur_state cur_node) ++ snd (split_cur_state G cur_state cur_node). 
 
-Definition get_cur_inputs_in_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+Definition get_cur_inputs_in_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   fst (split_cur_state G cur_state cur_node).
 
-Definition get_rest_cur_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+Definition get_rest_cur_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   snd (split_cur_state G cur_state cur_node).
 
-Definition get_new_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+Definition get_new_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   (repeat cur_node (length (get_cur_outputs G cur_state cur_node))) ++ 
   (get_rest_cur_state G cur_state cur_node).
 
-(* Rename these chief *)
-Lemma build_swap_structure_aux : forall l, length l = length (zx_node_list_to_ids l).
+(* Lemma build_swap_structure_aux : forall l, length l = length (zx_node_list_to_ids l).
 Proof.
   intros; unfold zx_node_list_to_ids; apply eq_sym; apply map_length.
-Qed.
+Qed. *)
+
+Lemma largest_subset_and_rest_split_length : 
+  forall lsplit lpool l1 l2,
+  largest_subset_and_rest_split lsplit lpool = (l1, l2) ->
+  length lsplit = ((length l1) + (length l2))%nat.
+Proof.
+  intros l1; induction l1.
+  - easy.
 
 (* Need to remove rewrites? *)
-Lemma build_node_structure_aux : forall G (cur_state : list zx_node) cur_node, 
+Lemma build_node_structure_aux : forall G (cur_state : list nat) cur_node, 
   length cur_state = ((length (get_cur_inputs_in_state G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node)))%nat.
 Proof.
   intros; unfold get_rest_cur_state, get_cur_inputs_in_state, split_cur_state.
   remember ((fun n : zx_node => inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) as f.
-  apply partition_length with (f := f). destruct (partition f cur_state); easy.
+  apply  with (f := f). destruct (partition f cur_state); easy.
 Qed.
 
 (* Need to remove rewrites? *)
-(* Lemma build_swap_structure_aux_aux : forall G (cur_state : list zx_node) cur_node, length cur_state = length (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node)).
+(* Lemma build_swap_structure_aux_aux : forall G (cur_state : list nat) cur_node, length cur_state = length (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node)).
 Proof.
   intros; unfold zx_node_list_to_ids; apply eq_sym; eapply eq_trans.
   eapply map_length. 
@@ -315,22 +366,18 @@ Proof.
 Qed. *)
 
 (* Check that this swap is correct *)
-Definition build_swap_structure (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : ZX (length cur_state) (length cur_state).
-Proof.
-  eapply cast.
-  - exact (build_swap_structure_aux cur_state).
-  - exact (build_swap_structure_aux cur_state).
-  - exact (create_arbitrary_swap (zx_node_list_to_ids cur_state) (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node))).
-Defined.
+Definition build_swap_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : ZX (length cur_state) (length cur_state) :=
+  create_arbitrary_swap cur_state (get_goal_ordering G cur_state cur_node).
 
 (* Need to consider box edges? *)
-Definition zx_node_to_spider (node : zx_node) (n m : nat) : ZX n m :=
-  match color node with 
-  | X_typ => X_Spider n m (angle node)
-  | _ => Z_Spider n m (angle node)
-  end.
+Definition zx_node_id_to_spider (G : zx_graph) (id_no n m : nat) : ZX n m :=
+  let node := (get_zx_node_by_id G id_no) in 
+    match color node with 
+    | X_typ => X_Spider n m (angle node)
+    | _ => Z_Spider n m (angle node)
+    end.
 
-Definition build_node_structure (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : 
+Definition build_node_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : 
   ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))).
 Proof.
   intros; eapply cast.
@@ -338,25 +385,27 @@ Proof.
   - reflexivity.
   - exact (pad_bot 
     (length (get_rest_cur_state G cur_state cur_node))
-    (zx_node_to_spider cur_node 
+    (zx_node_id_to_spider G cur_node 
       (length (get_cur_inputs_in_state G cur_state cur_node))
       (length (get_cur_outputs G cur_state cur_node)))).
 Defined.
 
-Definition one_node_translate (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : 
+Definition one_node_translate (G : zx_graph) (cur_state : list nat) (cur_node : nat) : 
   ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))) :=
   (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G cur_state cur_node). 
 
-Definition gtb_last_fence_post (cur_state : list zx_node) (outputs : list zx_node) : ZX (length cur_state) (length outputs).
+Definition dummy_spider (n m : nat) : ZX n m := X_Spider n m R0.
+
+Definition gtb_last_fence_post (cur_state : list nat) (outputs : list nat) : ZX (length cur_state) (length outputs).
 Proof.
-  intros; destruct (eq_nat_decide (length outputs) (length (zx_node_list_to_ids cur_state))).
+  intros; destruct (eq_nat_decide (length outputs) (length cur_state)).
   - eapply cast.
-    + exact (build_swap_structure_aux cur_state). 
+    + reflexivity.
   (* There may be a better way to do this next line, necessary to prove equality like this? *)
     + eapply eq_nat_eq; exact e.
-    + exact (create_arbitrary_swap (zx_node_list_to_ids cur_state) (zx_node_list_to_ids outputs)).
+    + exact (create_arbitrary_swap cur_state outputs).
   (* Dummy value if output len not equal *)
-  - exact (X_Spider (length cur_state) (length outputs) R0).
+  - exact (dummy_spider (length cur_state) (length outputs)).
 Defined.
 
 (* Remove rewrites? *)
@@ -367,7 +416,7 @@ Proof.
   rewrite app_length; rewrite repeat_length; easy.
 Qed.
 
-Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list zx_node) (cur_state : list zx_node) : 
+Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list nat) (cur_state : list nat) : 
   ZX (length cur_state) (length (outputs G)).
 Proof.
   destruct node_order as [ | cur_node ns] eqn:E.
@@ -383,3 +432,9 @@ Defined.
 (* Translation function *)
 Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
   graph_to_block_structure_aux G (nodes G) (inputs G).
+
+Definition node1 := mk_node 1%nat X_typ R1.
+Definition node2:= mk_node 2%nat Z_typ R0.
+
+(* Definition test1 := mk_graph
+  [] *)
