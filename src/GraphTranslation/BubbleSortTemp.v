@@ -221,3 +221,165 @@ Definition is_a_sorting_algorithm (f: list nat -> list nat) :=
 Proof.
 intros l; induction l.
 Admitted. *)
+
+
+(* Full translation *)
+
+(* ZX Digraph input type *)
+
+Inductive zx_color : Type :=
+  | X_typ
+  | Z_typ
+.
+
+(* Prob can simplify to mostly just be nats *)
+Record zx_node := mk_node
+{ id_no : nat;
+  color : zx_color;
+  angle : R 
+}.
+
+Definition eqb_zx_node (node1 node2 : zx_node) : bool :=
+  (id_no node1) =? (id_no node2).
+
+Record zx_graph := mk_graph
+{ inputs : list zx_node;
+  outputs : list zx_node;
+  nodes : list zx_node;
+  edges : list (zx_node * zx_node)
+}.
+
+Fixpoint inb_zx_node_list (l : list zx_node) (x : zx_node) : bool :=
+  match l with
+  | [] => false
+  | x'::xs => orb (eqb_zx_node x x') (inb_zx_node_list xs x) 
+  end.
+
+Definition zx_node_list_to_ids (l : list zx_node) : list nat :=
+  map (fun n => id_no n) l.
+
+Definition get_connections (G : zx_graph) (node : zx_node) : list (zx_node * zx_node) :=
+  filter (fun n => orb (eqb_zx_node (fst n) node) (eqb_zx_node (snd n) node)) (edges G).
+
+Definition get_neighbors (G : zx_graph) (node : zx_node) : list zx_node :=
+  map (fun n => if (eqb_zx_node (fst n) node) then (snd n) else fst n) (get_connections G node).
+
+Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node * list zx_node :=
+  partition (fun n => (inb_zx_node_list cur_state n)) (get_neighbors G cur_node).
+
+Definition get_cur_inputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  fst (distribute_inputs_outputs G cur_state cur_node).
+
+Definition get_cur_outputs (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  snd (distribute_inputs_outputs G cur_state cur_node).
+
+Definition split_cur_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node * list zx_node :=
+  partition (fun n => (inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) cur_state.
+
+Definition get_goal_ordering (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  fst (split_cur_state G cur_state cur_node) ++ snd (split_cur_state G cur_state cur_node). 
+
+Definition get_cur_inputs_in_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  fst (split_cur_state G cur_state cur_node).
+
+Definition get_rest_cur_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  snd (split_cur_state G cur_state cur_node).
+
+Definition get_new_state (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : list zx_node :=
+  (repeat cur_node (length (get_cur_outputs G cur_state cur_node))) ++ 
+  (get_rest_cur_state G cur_state cur_node).
+
+(* Rename these chief *)
+Lemma build_swap_structure_aux : forall l, length l = length (zx_node_list_to_ids l).
+Proof.
+  intros; unfold zx_node_list_to_ids; apply eq_sym; apply map_length.
+Qed.
+
+(* Need to remove rewrites? *)
+Lemma build_node_structure_aux : forall G (cur_state : list zx_node) cur_node, 
+  length cur_state = ((length (get_cur_inputs_in_state G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node)))%nat.
+Proof.
+  intros; unfold get_rest_cur_state, get_cur_inputs_in_state, split_cur_state.
+  remember ((fun n : zx_node => inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) as f.
+  apply partition_length with (f := f). destruct (partition f cur_state); easy.
+Qed.
+
+(* Need to remove rewrites? *)
+(* Lemma build_swap_structure_aux_aux : forall G (cur_state : list zx_node) cur_node, length cur_state = length (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node)).
+Proof.
+  intros; unfold zx_node_list_to_ids; apply eq_sym; eapply eq_trans.
+  eapply map_length. 
+  unfold get_goal_ordering; rewrite app_length; unfold split_cur_state; apply eq_sym.
+  remember ((fun n : zx_node => inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) as f. 
+  apply partition_length with (f := f); destruct (partition f cur_state); easy.
+Qed. *)
+
+(* Check that this swap is correct *)
+Definition build_swap_structure (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : ZX (length cur_state) (length cur_state).
+Proof.
+  eapply cast.
+  - exact (build_swap_structure_aux cur_state).
+  - exact (build_swap_structure_aux cur_state).
+  - exact (create_arbitrary_swap (zx_node_list_to_ids cur_state) (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node))).
+Defined.
+
+(* Need to consider box edges? *)
+Definition zx_node_to_spider (node : zx_node) (n m : nat) : ZX n m :=
+  match color node with 
+  | X_typ => X_Spider n m (angle node)
+  | _ => Z_Spider n m (angle node)
+  end.
+
+Definition build_node_structure (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : 
+  ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))).
+Proof.
+  intros; eapply cast.
+  - exact (build_node_structure_aux G cur_state cur_node).
+  - reflexivity.
+  - exact (pad_bot 
+    (length (get_rest_cur_state G cur_state cur_node))
+    (zx_node_to_spider cur_node 
+      (length (get_cur_inputs_in_state G cur_state cur_node))
+      (length (get_cur_outputs G cur_state cur_node)))).
+Defined.
+
+Definition one_node_translate (G : zx_graph) (cur_state : list zx_node) (cur_node : zx_node) : 
+  ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))) :=
+  (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G cur_state cur_node). 
+
+Definition gtb_last_fence_post (cur_state : list zx_node) (outputs : list zx_node) : ZX (length cur_state) (length outputs).
+Proof.
+  intros; destruct (eq_nat_decide (length outputs) (length (zx_node_list_to_ids cur_state))).
+  - eapply cast.
+    + exact (build_swap_structure_aux cur_state). 
+  (* There may be a better way to do this next line, necessary to prove equality like this? *)
+    + eapply eq_nat_eq; exact e.
+    + exact (create_arbitrary_swap (zx_node_list_to_ids cur_state) (zx_node_list_to_ids outputs)).
+  (* Dummy value if output len not equal *)
+  - exact (X_Spider (length cur_state) (length outputs) R0).
+Defined.
+
+(* Remove rewrites? *)
+Lemma graph_to_block_structure_aux_aux : 
+  forall G cur_state cur_node, (length (get_new_state G cur_state cur_node) = (length (get_cur_outputs G cur_state cur_node) + length (get_rest_cur_state G cur_state cur_node)))%nat.
+Proof.
+  intros; unfold get_new_state.
+  rewrite app_length; rewrite repeat_length; easy.
+Qed.
+
+Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list zx_node) (cur_state : list zx_node) : 
+  ZX (length cur_state) (length (outputs G)).
+Proof.
+  destruct node_order as [ | cur_node ns] eqn:E.
+  - exact (gtb_last_fence_post cur_state (outputs G)).
+  - eapply Compose.
+    + exact (one_node_translate G cur_state cur_node).
+    + eapply cast.
+      * exact (eq_sym (graph_to_block_structure_aux_aux G cur_state cur_node)). 
+      * reflexivity.
+      * exact ((graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node))).
+Defined.
+
+(* Translation function *)
+Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
+  graph_to_block_structure_aux G (nodes G) (inputs G).
