@@ -310,6 +310,16 @@ Definition get_connections (G : zx_graph) (node : nat) : list (nat * nat) :=
 Definition get_neighbors (G : zx_graph) (node : nat) : list nat :=
   map (fun n => if ((fst n) =? node) then (snd n) else fst n) (get_connections G node).
 
+Definition partition_self_edges (G : zx_graph) : list (nat * nat) * list (nat * nat) :=
+  partition (fun n => ((fst n) =? (snd n))) (edges G).
+
+Definition get_self_edges (G : zx_graph) : list (nat * nat) :=
+  fst (partition_self_edges G).
+
+Definition removed_self_edges (G : zx_graph) : list (nat * nat) :=
+  snd (partition_self_edges G).
+
+
 (* Check on pair order here *)
 Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat * list nat :=
   largest_subset_and_rest_split (get_neighbors G cur_node) cur_state.
@@ -369,15 +379,36 @@ Qed.
 Definition build_swap_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : ZX (length cur_state) (length cur_state) :=
   create_arbitrary_swap cur_state (get_goal_ordering G cur_state cur_node).
 
-(* Need to consider box edges? *)
-Definition zx_node_id_to_spider (G : zx_graph) (id_no n m : nat) : ZX n m :=
+Definition zx_node_id_to_spider_aux (G : zx_graph) (id_no n m : nat) : ZX n m :=
   let node := (get_zx_node_by_id G id_no) in 
     match color node with 
     | X_typ => X_Spider n m (angle node)
     | _ => Z_Spider n m (angle node)
     end.
 
-Definition build_node_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : 
+Fixpoint add_k_self_loops_to_spider {n m} (k : nat) (cur : ZX (k + n) (k + m))  : ZX n m.
+Proof.
+  destruct k.
+  - exact cur.
+  - apply add_k_self_loops_to_spider with (k := k); eapply Compose.
+    + exact (pad_bot (k + n) ⊂).
+    + eapply Compose. assert (H : forall i, (2 + i = 1 + S (i))%nat). reflexivity.
+      * eapply cast.
+        { specialize H with (k + n)%nat; exact H. }
+        { specialize H with (k + m)%nat; exact H. }
+        { eapply Stack. eapply Wire. exact cur. }
+      *  exact (pad_bot (k + m) ⊃).
+Defined.
+
+Definition get_self_edges_by_id (G : zx_graph) (self_edges : list (nat * nat)) (id_no : nat) : list (nat * nat) :=
+  filter (fun e => (fst e =? id_no)) self_edges.
+
+(* Need to consider box edges? *)
+Definition zx_node_id_to_spider (G : zx_graph) (self_edges : list (nat * nat)) (id_no n m : nat) : ZX n m :=
+  let k := (length (get_self_edges_by_id G self_edges id_no)) in
+    add_k_self_loops_to_spider k (zx_node_id_to_spider_aux G id_no (k + n) (k + m))%nat.
+
+Definition build_node_structure (G : zx_graph) (self_edges : list (nat * nat)) (cur_state : list nat) (cur_node : nat) : 
   ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))).
 Proof.
   intros; eapply cast.
@@ -385,14 +416,14 @@ Proof.
   - reflexivity.
   - exact (pad_bot 
     (length (get_rest_cur_state G cur_state cur_node))
-    (zx_node_id_to_spider G cur_node 
+    (zx_node_id_to_spider G self_edges cur_node 
       (length (get_cur_inputs_in_state G cur_state cur_node))
       (length (get_cur_outputs G cur_state cur_node)))).
 Defined.
 
-Definition one_node_translate (G : zx_graph) (cur_state : list nat) (cur_node : nat) : 
+Definition one_node_translate (G : zx_graph) (self_edges : list (nat * nat)) (cur_state : list nat) (cur_node : nat) : 
   ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))) :=
-  (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G cur_state cur_node). 
+  (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G self_edges cur_state cur_node). 
 
 Definition dummy_spider (n m : nat) : ZX n m := X_Spider n m R0.
 
@@ -416,22 +447,27 @@ Proof.
   rewrite app_length; rewrite repeat_length; easy.
 Qed.
 
-Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list nat) (cur_state : list nat) : 
+Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list nat) (cur_state : list nat) (self_edges : list (nat * nat)) : 
   ZX (length cur_state) (length (outputs G)).
 Proof.
   destruct node_order as [| cur_node ns] eqn:E.
   - exact (gtb_last_fence_post cur_state (outputs G)).
   - eapply Compose.
-    + exact (one_node_translate G cur_state cur_node).
+    + exact (one_node_translate G self_edges cur_state cur_node).
     + eapply cast.
       * exact (eq_sym (graph_to_block_structure_aux_aux G cur_state cur_node)). 
       * reflexivity.
-      * exact (graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node)).
+      * exact (graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node) self_edges).
 Defined.
 
 (* Translation function *)
 Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
-  graph_to_block_structure_aux G (nodes G) (inputs G).
+  let G' := mk_graph (mapping G) (inputs G) (outputs G) (nodes G) (removed_self_edges G) in
+    graph_to_block_structure_aux G' (nodes G') (inputs G') (get_self_edges G).
+
+(* Note that connections directly between inputs/outputs are suspicious as well as self-loops
+  with these exceptional nodes, need to look into this *)
+
 
 Definition node1 := mk_node 4%nat X_typ R1.
 Definition node2:= mk_node 5%nat Z_typ R0.
@@ -443,7 +479,7 @@ Definition test0 := mk_graph
   [0%nat]
   [1%nat]
   [4%nat]
-  [(0%nat, 4%nat); (4%nat, 1%nat)].
+  [(0%nat, 4%nat); (4%nat, 4%nat); (4%nat, 1%nat)].
 
 Definition test1 := mk_graph
   [node1; node2] 
@@ -452,4 +488,4 @@ Definition test1 := mk_graph
   [4%nat; 5%nat]
   [(0%nat, 4%nat); (1%nat, 5%nat); (4%nat, 3%nat); (5%nat, 2%nat)].
 
-Compute (graph_to_block_structure test0).
+Eval cbv in (graph_to_block_structure test0).
