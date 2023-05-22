@@ -190,9 +190,9 @@ Proof.
   - exact (n_wire (length l)).
 Defined.
 
-Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
+(* Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
 
-Compute (build_swap_at_index 3 5).
+Compute (build_swap_at_index 3 5). *)
 
 
 
@@ -243,6 +243,9 @@ Definition dummy_node := (mk_node 0%nat X_typ R0).
 (* 
 Definition eqb_zx_node (node1 node2 : zx_node) : bool :=
   (id_no node1) =? (id_no node2). *)
+
+Inductive zx_output_node : nat -> Type :=
+  | Outp (n : nat) : zx_output_node n.
 
 Record zx_graph := mk_graph
 { mapping : list zx_node;
@@ -338,32 +341,29 @@ Proof.
   intros; unfold zx_node_list_to_ids; apply eq_sym; apply map_length.
 Qed. *)
 
+
 Lemma largest_subset_and_rest_split_length : 
   forall lsplit lpool l1 l2,
   largest_subset_and_rest_split lsplit lpool = (l1, l2) ->
   length lsplit = ((length l1) + (length l2))%nat.
 Proof.
-  intros l1; induction l1.
-  - easy.
+  induction lsplit; intros.
+    - inversion H; easy.
+    - simpl; simpl in H; destruct (inb_zx_node_list lpool a).
+      + destruct (largest_subset_and_rest_split lsplit (remove_one Nat.eq_dec a lpool)) eqn: E; inversion H;
+        simpl; f_equal; eapply (IHlsplit (remove_one Nat.eq_dec a lpool) l l2); subst; exact E.
+      + destruct (largest_subset_and_rest_split lsplit lpool) eqn:E; inversion H; simpl; subst;
+        rewrite Nat.add_comm; simpl; f_equal; rewrite Nat.add_comm; eapply IHlsplit; exact E.
+Qed.
 
-(* Need to remove rewrites? *)
+
 Lemma build_node_structure_aux : forall G (cur_state : list nat) cur_node, 
   length cur_state = ((length (get_cur_inputs_in_state G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node)))%nat.
 Proof.
   intros; unfold get_rest_cur_state, get_cur_inputs_in_state, split_cur_state.
-  remember ((fun n : zx_node => inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) as f.
-  apply  with (f := f). destruct (partition f cur_state); easy.
+  destruct (largest_subset_and_rest_split cur_state (get_cur_inputs G cur_state cur_node)) eqn:E.
+  eapply largest_subset_and_rest_split_length; simpl; exact E.
 Qed.
-
-(* Need to remove rewrites? *)
-(* Lemma build_swap_structure_aux_aux : forall G (cur_state : list nat) cur_node, length cur_state = length (zx_node_list_to_ids (get_goal_ordering G cur_state cur_node)).
-Proof.
-  intros; unfold zx_node_list_to_ids; apply eq_sym; eapply eq_trans.
-  eapply map_length. 
-  unfold get_goal_ordering; rewrite app_length; unfold split_cur_state; apply eq_sym.
-  remember ((fun n : zx_node => inb_zx_node_list (get_cur_inputs G cur_state cur_node) n)) as f. 
-  apply partition_length with (f := f); destruct (partition f cur_state); easy.
-Qed. *)
 
 (* Check that this swap is correct *)
 Definition build_swap_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : ZX (length cur_state) (length cur_state) :=
@@ -419,22 +419,37 @@ Qed.
 Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list nat) (cur_state : list nat) : 
   ZX (length cur_state) (length (outputs G)).
 Proof.
-  destruct node_order as [ | cur_node ns] eqn:E.
+  destruct node_order as [| cur_node ns] eqn:E.
   - exact (gtb_last_fence_post cur_state (outputs G)).
   - eapply Compose.
     + exact (one_node_translate G cur_state cur_node).
     + eapply cast.
       * exact (eq_sym (graph_to_block_structure_aux_aux G cur_state cur_node)). 
       * reflexivity.
-      * exact ((graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node))).
+      * exact (graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node)).
 Defined.
 
 (* Translation function *)
 Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
   graph_to_block_structure_aux G (nodes G) (inputs G).
 
-Definition node1 := mk_node 1%nat X_typ R1.
-Definition node2:= mk_node 2%nat Z_typ R0.
+Definition node1 := mk_node 4%nat X_typ R1.
+Definition node2:= mk_node 5%nat Z_typ R0.
 
-(* Definition test1 := mk_graph
-  [] *)
+(* inputs and outputs are just nat ids as well *)
+
+Definition test0 := mk_graph
+  [node1] 
+  [0%nat]
+  [1%nat]
+  [4%nat]
+  [(0%nat, 4%nat); (4%nat, 1%nat)].
+
+Definition test1 := mk_graph
+  [node1; node2] 
+  [1%nat; 0%nat]
+  [2%nat; 3%nat]
+  [4%nat; 5%nat]
+  [(0%nat, 4%nat); (1%nat, 5%nat); (4%nat, 3%nat); (5%nat, 2%nat)].
+
+Compute (graph_to_block_structure test0).
