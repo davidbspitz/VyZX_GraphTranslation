@@ -512,23 +512,51 @@ Local Hint Unfold
 
 Ltac eval_graph_translation :=
   try (
-    simpl;
-    autounfold with graph_translate_eval_db;
-    simpl;
-    autounfold with graph_translate_eval_db;
+    try (unfold graph_to_block_structure ; simpl);
+    try (unfold graph_to_block_structure_aux ; simpl);
+    try (unfold gtb_last_fence_post; simpl);
+    try (unfold one_node_translate; simpl);
+    try (unfold build_node_structure; simpl);
+    try (unfold build_swap_structure; simpl);
+    try (unfold create_arbitrary_swap; simpl);
+    try (unfold zx_node_id_to_spider; simpl);
+    try (unfold get_self_edges_by_id; simpl);
+    try (unfold add_k_self_loops_to_spider; simpl);
+    try (unfold zx_node_id_to_spider_aux; simpl);
+    try (unfold get_new_state; simpl);
+    try (unfold get_rest_cur_state; simpl);
+    try (unfold get_cur_inputs_in_state; simpl);
+    try(unfold get_goal_ordering; simpl);
+    try(unfold split_cur_state; simpl);
+    try(unfold get_cur_outputs; simpl);
+    try(unfold get_cur_inputs; simpl);
+    try(unfold distribute_inputs_outputs; simpl);
+    try(unfold removed_self_edges; simpl);
+    try(unfold get_self_edges; simpl);
+    try(unfold partition_self_edges; simpl);
+    try(unfold get_neighbors; simpl);
+    try(unfold get_connections; simpl);
+    try(unfold inb_zx_node_list; simpl);
+    try(unfold arbitrary_swap_from_swaplist; simpl);
+    try(unfold pad_top; simpl);
+    try(unfold pad_bot; simpl);
     cleanup_zx;
     simpl_casts;
     simpl)
   .
-  
-
-(* Note that connections directly between inputs/outputs are suspicious as well as self-loops
-  with these exceptional nodes, need to look into this *)
 
 
 Definition node0 := mk_node 9%nat X_typ R0.
 Definition node1 := mk_node 4%nat X_typ R1.
 Definition node2 := mk_node 5%nat X_typ PI.
+Definition node4 := mk_node 4%nat X_typ R0.
+Definition node5 := mk_node 5%nat X_typ R0.
+Definition node6 := mk_node 6%nat X_typ R0.
+Definition node7 := mk_node 7%nat Z_typ R0.
+Definition node8 := mk_node 8%nat Z_typ R0.
+Definition node9 := mk_node 9%nat Z_typ R0.
+
+
 
 (* inputs and outputs are just nat ids as well *)
 Definition test0 := mk_graph
@@ -537,7 +565,6 @@ Definition test0 := mk_graph
   [1%nat]
   [4%nat]
   [(0%nat, 4%nat); (4%nat, 4%nat); (4%nat, 4%nat); (4%nat, 1%nat)].
-Transparent test0.
 
 Definition test1 := mk_graph
   [node1; node2] 
@@ -545,19 +572,35 @@ Definition test1 := mk_graph
   [2%nat; 3%nat]
   [4%nat; 5%nat]
   [(0%nat, 4%nat); (1%nat, 5%nat); (4%nat, 3%nat); (5%nat, 2%nat)].
-Transparent test1.
 
-Compute (get_zx_node_by_id test1 5%nat).
+(* Compute (get_zx_node_by_id test1 5%nat). *)
 
-Example see_if_algo_works : 
+Definition test2 := mk_graph
+  [node4; node5; node6; node7; node8; node9]
+  [0%nat; 1%nat]
+  [2%nat; 3%nat]
+  [4%nat; 5%nat; 6%nat; 7%nat; 8%nat; 9%nat]
+  [(0%nat, 7%nat); (7%nat, 4%nat); (7%nat, 5%nat); (4%nat, 0%nat); (4%nat, 8%nat);
+   (5%nat, 8%nat); (5%nat, 9%nat); (6%nat, 8%nat); (6%nat, 9%nat); (6%nat, 2%nat);
+   (9%nat, 3%nat)].
+
+(* Example see_if_algo_works : 
   (graph_to_block_structure test1) ∝ X_Spider (length (inputs test1)) (length (outputs test1)) R0.
 Proof.
+  eval_graph_translation.
+  Abort. *)
+
+
+Example see_if_algo_works2 : 
+  (graph_to_block_structure test2) ∝ Swap.
+Proof.
+  autounfold with graph_translate_eval_db.
+  simpl.
+  (* try (unfold graph_to_block_structure ; simpl). *)
+    (* try (unfold graph_to_block_structure_aux ; simpl);
+    try (unfold gtb_last_fence_post; simpl);
+    try (unfold one_node_translate; simpl);
+    try (unfold build_node_structure; simpl). *)
   (* eval_graph_translation. *)
   Abort.
   
-(* Compute (ZX_semantics (⊂ ↕ —
-⟷ (— ↕ (⊂ ↕ (— ↕ —) ⟷ (— ↕ X 3 3 R0 ⟷ (⊃ ↕ (— ↕ —))))
-⟷ (⊃ ↕ —))
-⟷ —)). *)
-
-(* Eval cbv in ZX_semantics (graph_to_block_structure test0). *)
