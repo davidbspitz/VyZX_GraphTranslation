@@ -196,7 +196,8 @@ Proof.
         * eapply _eq_nat_eq; exact e.
         * eapply _eq_nat_eq; exact e.
         * eapply (arbitrary_swap_from_swaplist (rev (generate_swap_list l')) (length l')).
-  - exact (n_wire (length l)).
+  - (* Dummy case *)
+    exact (n_wire (length l)).
 Defined.
 
 (* Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
@@ -353,7 +354,7 @@ Definition removed_self_edges (G : zx_graph) : list (nat * nat) :=
   snd (partition_self_edges G).
 
 
-Fixpoint get_input_state_cleaned_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : list nat :=
+(* Fixpoint get_input_state_cleaned_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : list nat :=
   match inputs, prev with 
   | [], Some i => [i]
   | [], _ => []
@@ -367,12 +368,21 @@ Definition get_input_state_cleaned (G : zx_graph) : list nat :=
   get_input_state_cleaned_aux (edges G) (inputs G) None.
 
 Definition get_output_state_cleaned (G : zx_graph) : list nat :=
-  get_input_state_cleaned_aux (edges G) (outputs G) None.
+  get_input_state_cleaned_aux (edges G) (outputs G) None. *)
 
 Definition get_edges_within_boundary_state (G : zx_graph) (b_state : list nat) : list (nat * nat) :=
   filter (fun e => match e with (e1, e2) => 
     (inb_zx_node_list b_state e1) && (inb_zx_node_list b_state e2) end) (edges G).
-(* 
+
+Definition get_input_state_loops_unflattened (G : zx_graph) : list nat * list nat :=
+    (largest_subset_and_rest_split
+      (inputs G)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (inputs G)))).
+
+Definition get_output_state_loops_unflattened (G : zx_graph) : list nat * list nat :=
+    (largest_subset_and_rest_split
+      (outputs G)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (outputs G)))).
 
 Definition get_input_state_cleaned (G : zx_graph) : list nat :=
   snd
@@ -380,17 +390,19 @@ Definition get_input_state_cleaned (G : zx_graph) : list nat :=
       (inputs G)
       (flatten_list_of_pairs (get_edges_within_boundary_state G (inputs G)))).
 
-Definition get_input_state_accounting_loops (G : zx_graph) : list nat :=
-  join_list_partition
-    (largest_subset_and_rest_split
-      (inputs G)
-      (flatten_list_of_pairs (get_edges_within_boundary_state G (inputs G)))).
-
-Definition get_output_state_accounting_loops (G : zx_graph) : list nat :=
-  join_list_partition
+Definition get_output_state_cleaned (G : zx_graph) : list nat :=
+  snd
     (largest_subset_and_rest_split
       (outputs G)
-      (flatten_list_of_pairs (get_edges_within_boundary_state G (outputs G)))). *)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (outputs G)))).
+
+Definition get_input_state_loops_ordered (G : zx_graph) : list nat :=
+  let es := (get_edges_within_boundary_state G (inputs G)) in
+    (flatten_list_of_pairs es) ++ (get_input_state_cleaned G).
+
+Definition get_output_state_loops_ordered (G : zx_graph) : list nat :=
+  let es := (get_edges_within_boundary_state G (outputs G)) in
+  (flatten_list_of_pairs es) ++ (get_output_state_cleaned G).
 
 (* Check on pair order here *)
 Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat * list nat :=
@@ -446,7 +458,6 @@ Proof.
   eapply largest_subset_and_rest_split_length; simpl; exact E.
 Qed.
 
-
 (* Check that this swap is correct *)
 Definition build_swap_structure (G : zx_graph) (cur_state : list nat) (cur_node : nat) : ZX (length cur_state) (length cur_state) :=
   create_arbitrary_swap cur_state (get_goal_ordering G cur_state cur_node).
@@ -472,7 +483,6 @@ Proof.
         { eapply Stack. eapply Wire. exact cur. }
       *  exact (pad_bot (k + m) ⊃).
 Defined.
-
 
 Definition get_self_edges_by_id (G : zx_graph) (self_edges : list (nat * nat)) (id_no : nat) : list (nat * nat) :=
   filter (fun e => (fst e =? id_no)) self_edges.
@@ -505,31 +515,81 @@ Definition one_node_translate (G : zx_graph) (self_edges : list (nat * nat)) (cu
 
 Definition dummy_spider (n m : nat) : ZX n m := X_Spider n m R0.
 
-Fixpoint remove_loops_from_output_aux (edges : list (nat * nat)) (outputs : list nat) (prev : option nat) : 
-  ZX (length (get_input_state_cleaned_aux edges outputs prev)) (match prev with Some _ => 1%nat | _ => 0%nat end + (length outputs)).
+Fixpoint build_n_capcup (n : nat) (cup : bool) : ZX (if cup then Nat.double n else 0) (if cup then 0 else Nat.double n).
 Proof.
-  destruct outputs as [| i outs] eqn:E; destruct prev eqn:Eprev.
-  - exact Wire.
+  assert (Htemp : forall n, ((S (n + (S n)) = (2 + (Nat.double n)))%nat)). 
+  intros; unfold Nat.double in *; lia.
+  induction n; destruct cup eqn:Ec; unfold Nat.double in *.
   - exact Empty.
-  - simpl; destruct (find (fun e' : nat * nat => (fst e' =? i) && (snd e' =? n) || (snd e' =? i) && (fst e' =? n)) edges) eqn:Eedge.
-    + assert (H : forall m : nat, (S (S m)) = (2 + m)%nat). reflexivity. eapply cast.
-      * exact (eq_sym (plus_O_n (length (get_input_state_cleaned_aux edges outs None)))).
-      * exact (H (length outs)).
-      * eapply Stack.
-        { exact Cap. }
-        { exact (remove_loops_from_output_aux edges outs None). }
-    + assert (H : forall m : nat, (S (S m)) = (1 + (S m))%nat). reflexivity.
-      assert (H' : forall m : nat, (S m) = (1 + m)%nat). reflexivity. eapply cast.
-      * simpl. exact (H' (length (get_input_state_cleaned_aux edges outs (Some i)))).
-      * exact (H (length outs)).
-      * eapply Stack.
-        { exact Wire. }
-        { exact (remove_loops_from_output_aux edges outs (Some i)). }
-  - exact (remove_loops_from_output_aux edges outs (Some i)).
+  - exact Empty. 
+  - simpl; eapply cast.
+    + exact (Htemp n).
+    + exact (eq_sym (Nat.add_0_l (0%nat))).
+    + eapply Stack.
+      * eapply Cup.
+      * exact (build_n_capcup n true).
+  - simpl; eapply cast.
+    + exact (eq_sym (Nat.add_0_l (0%nat))).
+    + exact (Htemp n).
+    + eapply Stack.
+      * eapply Cap.
+      * exact (build_n_capcup n false).
 Defined.
 
-Definition remove_loops_from_output (G : zx_graph) : ZX (length (get_output_state_cleaned G)) (length (outputs G)) :=
-  remove_loops_from_output_aux (edges G) (outputs G) None.
+Lemma remove_loops_from_output_aux_aux : forall G (loops outps : list nat), 
+  (get_output_state_loops_unflattened G) = (loops, outps) -> 
+  (length (outputs G)) = ((length loops) + (length outps))%nat.
+Proof.
+  intros. 
+  unfold get_output_state_loops_unflattened in H. 
+  apply (largest_subset_and_rest_split_length) with (lpool :=  (flatten_list_of_pairs
+  (get_edges_within_boundary_state G (outputs G)))); exact H.
+Defined.
+
+Definition remove_loops_from_output_aux (G : zx_graph) (n m halfn : nat) (Heven : n = (Nat.double halfn)%nat) : 
+  ZX m (n + m).
+Proof.
+  eapply cast.
+    - exact (eq_sym (Nat.add_0_l m)).
+    - reflexivity.
+    - eapply Stack.
+      * eapply cast.
+        { reflexivity. }
+        { exact Heven. }
+        { exact (build_n_capcup halfn false). }
+      * exact (n_wire m).
+Defined.
+
+Lemma even_explicit_div2 : forall n m, 
+  Nat.even n = true -> m = div2 n -> n = (Nat.double m)%nat.
+Proof.
+  intros; apply Nat.even_spec in H; subst; eapply Nat.Even_double; easy.
+Defined.
+
+Definition remove_loops_from_output (G : zx_graph) : ZX (length (get_output_state_cleaned G)) (length (outputs G)).
+Proof.
+  destruct (get_output_state_loops_unflattened G) as [loops outps] eqn:Eoutps; 
+  destruct (Nat.even (length loops)) eqn:Eeven;
+    remember (div2 (length loops)) as halfn.
+  - eapply Compose.
+    +  eapply cast.
+      * unfold get_output_state_cleaned; unfold get_output_state_loops_unflattened in Eoutps;
+        destruct (largest_subset_and_rest_split (outputs G)
+          (flatten_list_of_pairs
+          (get_edges_within_boundary_state G (outputs G)))); 
+          simpl; inversion Eoutps; reflexivity.
+      * apply remove_loops_from_output_aux_aux; exact Eoutps.
+      * exact (remove_loops_from_output_aux G (length loops) (length outps) halfn
+              (even_explicit_div2 (length loops) halfn Eeven Heqhalfn)).
+    + destruct (eq_nat_decide (length (get_output_state_loops_ordered G)) (length (outputs G))) as [L|R]. 
+      apply _eq_nat_eq in L; eapply cast.
+      * exact (eq_sym L).
+      * exact (eq_sym L).
+      * exact (create_arbitrary_swap (get_output_state_loops_ordered G) (outputs G)).
+      * (* Another dummy case*) apply dummy_spider.
+  - (* dummy case, there would always be an even number here *)
+    apply dummy_spider.
+Defined.
 
 Definition gtb_last_fence_post (G : zx_graph) (cur_state : list nat) : ZX (length cur_state) (length (outputs G)).
 Proof.
@@ -541,9 +601,7 @@ Proof.
       * reflexivity.
       * exact (remove_loops_from_output G).
     (* Dummy output below *)
-    + eapply Compose. 
-      * exact (dummy_spider (length cur_state) (length (get_output_state_cleaned G))).
-      * exact (remove_loops_from_output G).
+    + apply dummy_spider.
 Defined.
 
 (* Remove rewrites? *)
@@ -567,31 +625,48 @@ Proof.
       * exact (graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node) self_edges).
 Defined.
 
-Fixpoint remove_loops_from_input_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : 
-  ZX (match prev with Some _ => 1%nat | _ => 0%nat end + (length inputs)) (length (get_input_state_cleaned_aux edges inputs prev)).
+Lemma remove_loops_from_input_aux_aux : forall G (loops inpts : list nat), 
+  (get_input_state_loops_unflattened G) = (loops, inpts) -> 
+  (length (inputs G)) = ((length loops) + (length inpts))%nat.
 Proof.
-  destruct inputs as [| i ins] eqn:E; destruct prev eqn:Eprev.
-  - exact Wire.
-  - exact Empty.
-  - simpl; destruct (find (fun e' : nat * nat => (fst e' =? i) && (snd e' =? n) || (snd e' =? i) && (fst e' =? n)) edges) eqn:Eedge.
-    + assert (H : forall m : nat, (S (S m)) = (2 + m)%nat). reflexivity. eapply cast.
-      * exact (H (length ins)).
-      * exact (eq_sym (plus_O_n (length (get_input_state_cleaned_aux edges ins None)))).
-      * eapply Stack.
-        { exact Cup. }
-        { exact (remove_loops_from_input_aux edges ins None). }
-    + assert (H : forall m : nat, (S (S m)) = (1 + (S m))%nat). reflexivity.
-      assert (H' : forall m : nat, (S m) = (1 + m)%nat). reflexivity. eapply cast.
-      * exact (H (length ins)).
-      * simpl. exact (H' (length (get_input_state_cleaned_aux edges ins (Some i)))).
-      * eapply Stack.
-        { exact Wire. }
-        { exact (remove_loops_from_input_aux edges ins (Some i)). }
-  - exact (remove_loops_from_input_aux edges ins (Some i)).
+  intros. 
+  unfold get_input_state_loops_unflattened in H. 
+  apply (largest_subset_and_rest_split_length) with (lpool := (flatten_list_of_pairs
+  (get_edges_within_boundary_state G (inputs G)))); exact H.
 Defined.
 
-Definition remove_loops_from_input (G : zx_graph) : ZX (length (inputs G)) (length (get_input_state_cleaned G)) :=
-  remove_loops_from_input_aux (edges G) (inputs G) None.
+Definition remove_loops_from_input_aux (G : zx_graph) (n m halfn : nat) (Heven : n = (Nat.double halfn)%nat) : 
+  ZX (n + m) m.
+Proof.
+  eapply cast.
+    - reflexivity.
+    - exact (eq_sym (Nat.add_0_l m)).
+    - eapply Stack.
+      * eapply cast.
+        { exact Heven. }
+        { reflexivity. }
+        { exact (build_n_capcup halfn true). }
+      * exact (n_wire m).
+Defined.
+
+Definition remove_loops_from_input (G : zx_graph) : ZX (length (inputs G)) (length (get_input_state_cleaned G)) .
+Proof.
+  destruct (get_input_state_loops_unflattened G) as [loops inpts] eqn:Einpts; 
+  destruct (Nat.even (length loops)) eqn:Eeven; remember (div2 (length loops)) as halfn.
+  - eapply Compose.
+    + exact (create_arbitrary_swap (inputs G) (get_input_state_loops_ordered G)).
+    + eapply cast.
+      * apply remove_loops_from_input_aux_aux; exact Einpts.
+      * unfold get_input_state_cleaned; unfold get_input_state_loops_unflattened in Einpts;
+        destruct (largest_subset_and_rest_split (inputs G)
+          (flatten_list_of_pairs
+          (get_edges_within_boundary_state G (inputs G)))); 
+          simpl; inversion Einpts; reflexivity.
+      * exact (remove_loops_from_input_aux G (length loops) (length inpts) halfn
+              (even_explicit_div2 (length loops) halfn Eeven Heqhalfn)).
+  - (* dummy case, there would always be an even number here *)
+    apply dummy_spider.
+Defined.
 
 (* Translation function *)
 Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
@@ -601,8 +676,18 @@ Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (len
 
 Local Hint Unfold 
   graph_to_block_structure 
+  remove_loops_from_input
+  remove_loops_from_input_aux
   graph_to_block_structure_aux 
+  get_edges_within_boundary_state
+  get_input_state_loops_unflattened
+  get_input_state_cleaned
+  get_input_state_loops_ordered
   gtb_last_fence_post
+  get_output_state_loops_unflattened
+  get_output_state_cleaned
+  get_output_state_loops_ordered
+  build_n_capcup
   one_node_translate
   build_node_structure
   build_swap_structure
@@ -624,6 +709,8 @@ Local Hint Unfold
   partition_self_edges
   get_neighbors
   get_connections
+  remove_loops_from_output
+  remove_loops_from_output_aux
   inb_zx_node_list
   arbitrary_swap_from_swaplist
   pad_top
@@ -679,6 +766,31 @@ Definition test2 := mk_graph
   [(0%nat, 7%nat); (7%nat, 4%nat); (7%nat, 5%nat); (4%nat, 0%nat); (4%nat, 8%nat);
    (5%nat, 8%nat); (5%nat, 9%nat); (6%nat, 8%nat); (6%nat, 9%nat); (6%nat, 2%nat);
    (9%nat, 3%nat)].
+
+Definition test3 := mk_graph
+  [node8]
+  [0%nat; 1%nat; 2%nat; 3%nat]
+  [4%nat; 5%nat; 6%nat; 7%nat]
+  [8%nat]
+  [(0%nat, 2%nat); (4%nat, 7%nat); (1%nat, 6%nat); (3%nat, 8%nat); (8%nat, 5%nat)].
+
+(* Need to account for even predicate in simplifying *)
+
+(* Compute ((graph_to_block_structure test3)). *)
+
+Example see_if_algo_works3 : 
+  (graph_to_block_structure test3) ∝ (n_wire 4).
+Proof.
+  eval_graph_translation.
+  simpl.
+  (* simpl_casts.
+  simpl.
+  simpl_casts. *)
+  
+  
+  (* simpl.
+  simpl_casts.
+
 
 (* Example see_if_algo_works : 
   (graph_to_block_structure test1) ∝ X_Spider (length (inputs test1)) (length (outputs test1)) R0.
