@@ -270,6 +270,15 @@ Definition get_zx_node_by_id (G : zx_graph) (n : nat) : zx_node :=
   | _ => dummy_node (* Could change this*)
   end.
 
+Definition inb_zx_edge_list (l : list (nat * nat)) (e : nat * nat) : bool :=
+  match e with
+  | (e1, e2) => match (find (fun e' => ((fst e' =? e1) && (snd e' =? e2)) || ((snd e' =? e1) && (fst e' =? e2))) l) with
+                | Some _ => true
+                | _ => false
+                end
+  end.
+
+
 Definition inb_zx_node_list (l : list nat) (x : nat) : bool :=
   if (in_dec Nat.eq_dec x l) then true else false.
 
@@ -278,6 +287,15 @@ Fixpoint remove_one {A} (eq_dec : (forall x y : A, {x = y}+{x <> y})) (x : A) (l
       | [] => []
       | x'::xs => if (eq_dec x x') then xs else x'::(remove_one eq_dec x xs)
   end.
+
+Definition flatten_list_of_pairs {A} (l : list (A * A)) : list A :=
+  fold_right 
+    (fun e es => match e with (e1, e2) => e1::e2::es end)
+    []
+    l. 
+
+Definition join_list_partition {A} (l : list A * list A) : list A :=
+  fst l ++ snd l.
 
 (* Fixpoint largest_subset_and_rest_pool (lsplit lpool : list nat) : list nat * list nat  :=
   match lsplit with
@@ -292,6 +310,10 @@ Fixpoint remove_one {A} (eq_dec : (forall x y : A, {x = y}+{x <> y})) (x : A) (l
                 end
   end. *)
 
+(*  Given two lists, lsplit (list to be split), and lpool, returns 
+    a pair of lists, the left list is elements of lsplit that are in lpool
+    , and the right is those that are not. This accounts for duplicates,
+    so its like subtracting lpool from lsplit *)
 Fixpoint largest_subset_and_rest_split (lsplit lpool : list nat) : list nat * list nat  :=
   match lsplit with
   | [] => ([], [])
@@ -331,6 +353,45 @@ Definition removed_self_edges (G : zx_graph) : list (nat * nat) :=
   snd (partition_self_edges G).
 
 
+Fixpoint get_input_state_cleaned_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : list nat :=
+  match inputs, prev with 
+  | [], Some i => [i]
+  | [], _ => []
+  | i::ins, Some i' => if (inb_zx_edge_list edges (i, i')) then
+                        get_input_state_cleaned_aux edges ins None else
+                        i'::get_input_state_cleaned_aux edges ins (Some i)
+  | i::ins, _ => get_input_state_cleaned_aux edges ins (Some i)
+  end.
+
+Definition get_input_state_cleaned (G : zx_graph) : list nat :=
+  get_input_state_cleaned_aux (edges G) (inputs G) None.
+
+Definition get_output_state_cleaned (G : zx_graph) : list nat :=
+  get_input_state_cleaned_aux (edges G) (outputs G) None.
+
+Definition get_edges_within_boundary_state (G : zx_graph) (b_state : list nat) : list (nat * nat) :=
+  filter (fun e => match e with (e1, e2) => 
+    (inb_zx_node_list b_state e1) && (inb_zx_node_list b_state e2) end) (edges G).
+(* 
+
+Definition get_input_state_cleaned (G : zx_graph) : list nat :=
+  snd
+    (largest_subset_and_rest_split
+      (inputs G)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (inputs G)))).
+
+Definition get_input_state_accounting_loops (G : zx_graph) : list nat :=
+  join_list_partition
+    (largest_subset_and_rest_split
+      (inputs G)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (inputs G)))).
+
+Definition get_output_state_accounting_loops (G : zx_graph) : list nat :=
+  join_list_partition
+    (largest_subset_and_rest_split
+      (outputs G)
+      (flatten_list_of_pairs (get_edges_within_boundary_state G (outputs G)))). *)
+
 (* Check on pair order here *)
 Definition distribute_inputs_outputs (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat * list nat :=
   largest_subset_and_rest_split (get_neighbors G cur_node) cur_state.
@@ -345,7 +406,7 @@ Definition split_cur_state (G : zx_graph) (cur_state : list nat) (cur_node : nat
   largest_subset_and_rest_split cur_state (get_cur_inputs G cur_state cur_node).
 
 Definition get_goal_ordering (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
-  fst (split_cur_state G cur_state cur_node) ++ snd (split_cur_state G cur_state cur_node). 
+  join_list_partition (split_cur_state G cur_state cur_node).
 
 Definition get_cur_inputs_in_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   fst (split_cur_state G cur_state cur_node).
@@ -439,18 +500,50 @@ Definition one_node_translate (G : zx_graph) (self_edges : list (nat * nat)) (cu
   ZX (length cur_state) ((length (get_cur_outputs G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node))) :=
   (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G self_edges cur_state cur_node). 
 
+
+
+
 Definition dummy_spider (n m : nat) : ZX n m := X_Spider n m R0.
 
-Definition gtb_last_fence_post (cur_state : list nat) (outputs : list nat) : ZX (length cur_state) (length outputs).
+Fixpoint remove_loops_from_output_aux (edges : list (nat * nat)) (outputs : list nat) (prev : option nat) : 
+  ZX (length (get_input_state_cleaned_aux edges outputs prev)) (match prev with Some _ => 1%nat | _ => 0%nat end + (length outputs)).
 Proof.
-  intros; destruct (eq_nat_decide (length outputs) (length cur_state)).
-  - eapply cast.
-    + reflexivity.
-  (* There may be a better way to do this next line, necessary to prove equality like this? *)
-    + eapply _eq_nat_eq; exact e.
-    + exact (create_arbitrary_swap cur_state outputs).
-  (* Dummy value if output len not equal *)
-  - exact (dummy_spider (length cur_state) (length outputs)).
+  destruct outputs as [| i outs] eqn:E; destruct prev eqn:Eprev.
+  - exact Wire.
+  - exact Empty.
+  - simpl; destruct (find (fun e' : nat * nat => (fst e' =? i) && (snd e' =? n) || (snd e' =? i) && (fst e' =? n)) edges) eqn:Eedge.
+    + assert (H : forall m : nat, (S (S m)) = (2 + m)%nat). reflexivity. eapply cast.
+      * exact (eq_sym (plus_O_n (length (get_input_state_cleaned_aux edges outs None)))).
+      * exact (H (length outs)).
+      * eapply Stack.
+        { exact Cap. }
+        { exact (remove_loops_from_output_aux edges outs None). }
+    + assert (H : forall m : nat, (S (S m)) = (1 + (S m))%nat). reflexivity.
+      assert (H' : forall m : nat, (S m) = (1 + m)%nat). reflexivity. eapply cast.
+      * simpl. exact (H' (length (get_input_state_cleaned_aux edges outs (Some i)))).
+      * exact (H (length outs)).
+      * eapply Stack.
+        { exact Wire. }
+        { exact (remove_loops_from_output_aux edges outs (Some i)). }
+  - exact (remove_loops_from_output_aux edges outs (Some i)).
+Defined.
+
+Definition remove_loops_from_output (G : zx_graph) : ZX (length (get_output_state_cleaned G)) (length (outputs G)) :=
+  remove_loops_from_output_aux (edges G) (outputs G) None.
+
+Definition gtb_last_fence_post (G : zx_graph) (cur_state : list nat) : ZX (length cur_state) (length (outputs G)).
+Proof.
+  eapply Compose.
+  - exact (create_arbitrary_swap cur_state (get_output_state_cleaned G)).
+  - destruct (eq_nat_decide (length cur_state) (length (get_output_state_cleaned G))) as [L | R].
+    + eapply cast.
+      * exact (_eq_nat_eq (length cur_state) (length (get_output_state_cleaned G)) L).
+      * reflexivity.
+      * exact (remove_loops_from_output G).
+    (* Dummy output below *)
+    + eapply Compose. 
+      * exact (dummy_spider (length cur_state) (length (get_output_state_cleaned G))).
+      * exact (remove_loops_from_output G).
 Defined.
 
 (* Remove rewrites? *)
@@ -465,7 +558,7 @@ Fixpoint graph_to_block_structure_aux (G : zx_graph) (node_order : list nat) (cu
   ZX (length cur_state) (length (outputs G)).
 Proof.
   destruct node_order as [| cur_node ns] eqn:E.
-  - exact (gtb_last_fence_post cur_state (outputs G)).
+  - exact (gtb_last_fence_post G cur_state).
   - eapply Compose.
     + exact (one_node_translate G self_edges cur_state cur_node).
     + eapply cast.
@@ -474,10 +567,37 @@ Proof.
       * exact (graph_to_block_structure_aux G ns (get_new_state G cur_state cur_node) self_edges).
 Defined.
 
+Fixpoint remove_loops_from_input_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : 
+  ZX (match prev with Some _ => 1%nat | _ => 0%nat end + (length inputs)) (length (get_input_state_cleaned_aux edges inputs prev)).
+Proof.
+  destruct inputs as [| i ins] eqn:E; destruct prev eqn:Eprev.
+  - exact Wire.
+  - exact Empty.
+  - simpl; destruct (find (fun e' : nat * nat => (fst e' =? i) && (snd e' =? n) || (snd e' =? i) && (fst e' =? n)) edges) eqn:Eedge.
+    + assert (H : forall m : nat, (S (S m)) = (2 + m)%nat). reflexivity. eapply cast.
+      * exact (H (length ins)).
+      * exact (eq_sym (plus_O_n (length (get_input_state_cleaned_aux edges ins None)))).
+      * eapply Stack.
+        { exact Cup. }
+        { exact (remove_loops_from_input_aux edges ins None). }
+    + assert (H : forall m : nat, (S (S m)) = (1 + (S m))%nat). reflexivity.
+      assert (H' : forall m : nat, (S m) = (1 + m)%nat). reflexivity. eapply cast.
+      * exact (H (length ins)).
+      * simpl. exact (H' (length (get_input_state_cleaned_aux edges ins (Some i)))).
+      * eapply Stack.
+        { exact Wire. }
+        { exact (remove_loops_from_input_aux edges ins (Some i)). }
+  - exact (remove_loops_from_input_aux edges ins (Some i)).
+Defined.
+
+Definition remove_loops_from_input (G : zx_graph) : ZX (length (inputs G)) (length (get_input_state_cleaned G)) :=
+  remove_loops_from_input_aux (edges G) (inputs G) None.
+
 (* Translation function *)
 Definition graph_to_block_structure (G : zx_graph) : ZX (length (inputs G)) (length (outputs G)) :=
   let G' := mk_graph (mapping G) (inputs G) (outputs G) (nodes G) (removed_self_edges G) in
-    graph_to_block_structure_aux G' (nodes G') (inputs G') (get_self_edges G).
+    (remove_loops_from_input G') ⟷
+    graph_to_block_structure_aux G' (nodes G') (get_input_state_cleaned G') (get_self_edges G).
 
 Local Hint Unfold 
   graph_to_block_structure 
@@ -512,34 +632,10 @@ Local Hint Unfold
 
 Ltac eval_graph_translation :=
   try (
-    try (unfold graph_to_block_structure ; simpl);
-    try (unfold graph_to_block_structure_aux ; simpl);
-    try (unfold gtb_last_fence_post; simpl);
-    try (unfold one_node_translate; simpl);
-    try (unfold build_node_structure; simpl);
-    try (unfold build_swap_structure; simpl);
-    try (unfold create_arbitrary_swap; simpl);
-    try (unfold zx_node_id_to_spider; simpl);
-    try (unfold get_self_edges_by_id; simpl);
-    try (unfold add_k_self_loops_to_spider; simpl);
-    try (unfold zx_node_id_to_spider_aux; simpl);
-    try (unfold get_new_state; simpl);
-    try (unfold get_rest_cur_state; simpl);
-    try (unfold get_cur_inputs_in_state; simpl);
-    try(unfold get_goal_ordering; simpl);
-    try(unfold split_cur_state; simpl);
-    try(unfold get_cur_outputs; simpl);
-    try(unfold get_cur_inputs; simpl);
-    try(unfold distribute_inputs_outputs; simpl);
-    try(unfold removed_self_edges; simpl);
-    try(unfold get_self_edges; simpl);
-    try(unfold partition_self_edges; simpl);
-    try(unfold get_neighbors; simpl);
-    try(unfold get_connections; simpl);
-    try(unfold inb_zx_node_list; simpl);
-    try(unfold arbitrary_swap_from_swaplist; simpl);
-    try(unfold pad_top; simpl);
-    try(unfold pad_bot; simpl);
+    simpl;
+    autounfold with graph_translate_eval_db;
+    simpl;
+    autounfold with graph_translate_eval_db;
     cleanup_zx;
     simpl_casts;
     simpl)
@@ -589,13 +685,24 @@ Definition test2 := mk_graph
 Proof.
   eval_graph_translation.
   Abort. *)
-
+(* 
+Compute  (graph_to_block_structure test2).
+Compute ((get_self_edges test2)).
 
 Example see_if_algo_works2 : 
   (graph_to_block_structure test2) ∝ Swap.
 Proof.
-  autounfold with graph_translate_eval_db.
+  (* cbv. *)
+  unfold graph_to_block_structure.
+  unfold graph_to_block_structure_aux.
+  (* simpl. *)
+  (* simpl. *)
+  (* eval_graph_translation. *)
+  (* autounfold with graph_translate_eval_db.
   simpl.
+  simpl.
+  unfold build_swap_at_index. *)
+  (* eval_graph_translation. *)
   (* try (unfold graph_to_block_structure ; simpl). *)
     (* try (unfold graph_to_block_structure_aux ; simpl);
     try (unfold gtb_last_fence_post; simpl);
@@ -603,4 +710,4 @@ Proof.
     try (unfold build_node_structure; simpl). *)
   (* eval_graph_translation. *)
   Abort.
-  
+   *)
