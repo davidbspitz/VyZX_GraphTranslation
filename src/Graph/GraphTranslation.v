@@ -448,7 +448,7 @@ Proof.
         simpl; f_equal; eapply (IHlsplit (remove_one Nat.eq_dec a lpool) l l2); subst; exact E.
       + destruct (largest_subset_and_rest_split lsplit lpool) eqn:E; inversion H; simpl; subst;
         rewrite Nat.add_comm; simpl; f_equal; rewrite Nat.add_comm; eapply IHlsplit; exact E.
-Qed.
+Defined.
 
 Lemma build_node_structure_aux : forall G (cur_state : list nat) cur_node, 
   length cur_state = ((length (get_cur_inputs_in_state G cur_state cur_node)) + (length (get_rest_cur_state G cur_state cur_node)))%nat.
@@ -524,12 +524,12 @@ Proof.
   - exact Empty. 
   - simpl; eapply cast.
     + exact (Htemp n).
-    + exact (eq_sym (Nat.add_0_l (0%nat))).
+    + exact (eq_sym (Nat.add_0_r (0%nat))).
     + eapply Stack.
       * eapply Cup.
       * exact (build_n_capcup n true).
   - simpl; eapply cast.
-    + exact (eq_sym (Nat.add_0_l (0%nat))).
+    + exact (eq_sym (Nat.add_0_r (0%nat))).
     + exact (Htemp n).
     + eapply Stack.
       * eapply Cap.
@@ -550,7 +550,7 @@ Definition remove_loops_from_output_aux (G : zx_graph) (n m halfn : nat) (Heven 
   ZX m (n + m).
 Proof.
   eapply cast.
-    - exact (eq_sym (Nat.add_0_l m)).
+    - assert (H :  m = (0 + m)%nat). reflexivity. exact H.
     - reflexivity.
     - eapply Stack.
       * eapply cast.
@@ -640,7 +640,7 @@ Definition remove_loops_from_input_aux (G : zx_graph) (n m halfn : nat) (Heven :
 Proof.
   eapply cast.
     - reflexivity.
-    - exact (eq_sym (Nat.add_0_l m)).
+    - assert (H :  m = (0 + m)%nat). reflexivity. exact H.
     - eapply Stack.
       * eapply cast.
         { exact Heven. }
@@ -688,6 +688,7 @@ Local Hint Unfold
   get_output_state_cleaned
   get_output_state_loops_ordered
   build_n_capcup
+  Nat.double
   one_node_translate
   build_node_structure
   build_swap_structure
@@ -719,12 +720,11 @@ Local Hint Unfold
 
 Ltac eval_graph_translation :=
   try (
-    simpl;
+    repeat(
     autounfold with graph_translate_eval_db;
-    simpl;
-    autounfold with graph_translate_eval_db;
-    cleanup_zx;
+    simpl);
     simpl_casts;
+    cleanup_zx;
     simpl)
   .
 
@@ -781,8 +781,15 @@ Definition test3 := mk_graph
 Example see_if_algo_works3 : 
   (graph_to_block_structure test3) ∝ (n_wire 4).
 Proof.
-  eval_graph_translation.
+  (* eval_graph_translation.
   simpl.
+  unfold remove_loops_from_output_aux_aux.
+  (* unfold largest_subset_and_rest_split_length. *)
+  simpl.
+  unfold even_explicit_div2.
+  unfold Nat.double.
+  simpl.
+  simpl_casts. *)
   (* simpl_casts.
   simpl.
   simpl_casts. *)
@@ -804,22 +811,4 @@ Compute ((get_self_edges test2)).
 Example see_if_algo_works2 : 
   (graph_to_block_structure test2) ∝ Swap.
 Proof.
-  (* cbv. *)
-  unfold graph_to_block_structure.
-  unfold graph_to_block_structure_aux.
-  (* simpl. *)
-  (* simpl. *)
-  (* eval_graph_translation. *)
-  (* autounfold with graph_translate_eval_db.
-  simpl.
-  simpl.
-  unfold build_swap_at_index. *)
-  (* eval_graph_translation. *)
-  (* try (unfold graph_to_block_structure ; simpl). *)
-    (* try (unfold graph_to_block_structure_aux ; simpl);
-    try (unfold gtb_last_fence_post; simpl);
-    try (unfold one_node_translate; simpl);
-    try (unfold build_node_structure; simpl). *)
-  (* eval_graph_translation. *)
-  Abort.
-   *)
+  *) *)
