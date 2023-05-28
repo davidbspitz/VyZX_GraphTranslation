@@ -8,7 +8,7 @@ From Coq Require Import Arith.Compare_dec.
 Import ListNotations.
 Require Import Lia.
 
-(* Intake graphical ZX data type with connection information into semantically equivalent ZX diagram *)
+(* Translate graphical adjacency list ZX data type with connection information into semantically equivalent ZX diagram *)
 
 (*  This entire section has the goal of constructing any general 
     ZX swap structure that can swap between any two qubit permutations.
@@ -670,7 +670,7 @@ Ltac eval_graph_translation :=
     cleanup_zx;
     simpl)
   .
-(* Need to update tactic *)
+(* Need to update tactic, include bubble_sort evaluation tactic *)
 
 Definition node0 := mk_node 9%nat X_typ R0.
 Definition node1 := mk_node 4%nat X_typ R1.
@@ -721,38 +721,7 @@ Definition test3 := mk_graph
 
 (* Compute ((graph_to_block_structure test3)). *)
 
-Example see_if_algo_works3 : 
+(* Example see_if_algo_works3 : 
   (graph_to_block_structure test3) ∝ (n_wire 4).
 Proof.
-Abort.
-  (* eval_graph_translation.
-  simpl.
-  unfold remove_loops_from_output_aux_aux.
-  (* unfold largest_subset_and_rest_split_length. *)
-  simpl.
-  unfold even_explicit_div2.
-  unfold Nat.double.
-  simpl.
-  simpl_casts. *)
-  (* simpl_casts.
-  simpl.
-  simpl_casts. *)
-  
-  
-  (* simpl.
-  simpl_casts.
-
-
-(* Example see_if_algo_works : 
-  (graph_to_block_structure test1) ∝ X_Spider (length (inputs test1)) (length (outputs test1)) R0.
-Proof.
-  eval_graph_translation.
-  Abort. *)
-(* 
-Compute  (graph_to_block_structure test2).
-Compute ((get_self_edges test2)).
-
-Example see_if_algo_works2 : 
-  (graph_to_block_structure test2) ∝ Swap.
-Proof.
-  *) *)
+Abort. *)
