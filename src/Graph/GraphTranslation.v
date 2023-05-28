@@ -724,6 +724,7 @@ Definition test3 := mk_graph
 Example see_if_algo_works3 : 
   (graph_to_block_structure test3) ∝ (n_wire 4).
 Proof.
+Abort.
   (* eval_graph_translation.
   simpl.
   unfold remove_loops_from_output_aux_aux.
