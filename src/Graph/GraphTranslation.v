@@ -1,20 +1,20 @@
+Require Import CoreData.CoreData.
+Require Import Ingest.SQIRIngest.
+Require Import CoreRules.CoreRules.
 From Coq Require Import Lists.List.
 From Coq Require Import Nat.
 From Coq Require Import Arith.EqNat.
 From Coq Require Import Arith.Compare_dec.
 Import ListNotations.
-Require Import CoreData.CoreData.
-Require Import Ingest.SQIRIngest.
 Require Import Lia.
-Require Import CoreRules.CoreRules.
+
+(* Intake graphical ZX data type with connection information into semantically equivalent ZX diagram *)
 
 (*  This entire section has the goal of constructing any general 
-    ZX swap structure that can swap between any two permutations.
-    The ZX swap only swaps adjacent indices, so a bubblesort is needed.
+    ZX swap structure that can swap between any two qubit permutations.
+    The ZX swap only swaps adjacent wires, so a bubblesort is needed.
 *)
 
-(*  This is more general than a correct indexed list, but we can have a 
-    well formedness property instead *)
 Definition indexed_list (A : Type) : Type := list (A * nat).
 
 (*  Provides indices for an existing list invreverse order
@@ -96,6 +96,7 @@ Definition bubblesort (l : list nat) : indexed_list nat * swap_list :=
 Definition generate_swap_list (l : list nat) : swap_list := 
   snd (bubblesort l).
 
+(* Could be tested more *)
 (* The correct swapping procedure. Given index i, swaps the ith and i + 1th index. *)
 (* 0 <= i < len(il), with index conventions as above *)
 Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_list nat :=
@@ -111,29 +112,6 @@ Fixpoint swap_adjacent_in_ind_list (il : indexed_list nat) (i : nat) : indexed_l
         (x, i') :: swap_adjacent_in_ind_list xs i
     end
   end.
-
-
-(* Fixpoint debug_batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : list (indexed_list nat) :=
-  match sl with
-  | [] => []
-  | s :: ss => (swap_adjacent_in_ind_list il s) :: (debug_batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss)
-  end.
-
-Definition prettify (l : list (indexed_list nat)) : list (list nat) :=
-  map (fun l' => List.map fst l') l.
-
-Definition mylist := [2%nat; 9%nat; 6%nat; 8%nat; 1%nat; 5%nat; 4%nat; 7%nat].
-
-Compute (generate_swap_list mylist).
-
-Compute prettify (debug_batch_swap_adj_in_ind_list (create_indexed_list mylist) (snd (bubblesort mylist))).
-
-Fixpoint batch_swap_adj_in_ind_list (il : indexed_list nat) (sl : swap_list) : indexed_list nat :=
-  match sl with
-  | [] => il
-  | s :: ss => batch_swap_adj_in_ind_list (swap_adjacent_in_ind_list il s) ss
-  end. *)
-
 
 (*  Constructing the swap structure *)
 (*  From a swap index, the idea is to create a stack of wires with a 
@@ -152,7 +130,7 @@ Proof.
   lia.
 Qed.
 
-
+(* This could be rewritten as below ones *)
 Fixpoint build_swap_at_index (i len : nat) : ZX len len.
 Proof.
   destruct (le_lt_dec (plus 2 i) len); destruct (le_lt_dec 2 len).
@@ -200,37 +178,46 @@ Proof.
     exact (n_wire (length l)).
 Defined.
 
-(* Compute (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]).
+Local Hint Unfold 
+  create_arbitrary_swap
+  arbitrary_swap_from_swaplist
+  pad_bot
+  pad_top
+  : bubblesort_swap_eval_db.
 
-Compute (build_swap_at_index 3 5). *)
+Ltac eval_bubblsort_swap :=
+try (
+  repeat(
+  autounfold with bubblesort_swap_eval_db;
+  simpl);
+  simpl_casts;
+  cleanup_zx;
+  simpl_casts;
+  simpl)
+.
 
-
-
-(* Definition test_l := [53; 185; 96; 31; 142; 77; 193; 168; 12; 55; 23; 110; 182; 171; 147]. *)
-
-(* Compute bubblesort test_l.
-
-Compute indexed_list_to_list(batch_swap_adj_in_ind_list 
-(create_indexed_list test_l)
-(snd (bubblesort test_l))). *)
-
-
-(* 
-Inductive sorted: list nat -> Prop := 
-| sorted_nil:
-    sorted []
-| sorted_1: forall x,
-    sorted [x]
-| sorted_cons: forall x y l,
-   x <= y -> sorted [y;l] -> sorted [x;y;l].
-
-Definition is_a_sorting_algorithm (f: list nat -> list nat) :=
-  forall al, Permutation al (f al) /\ sorted (f al). *)
-
-(* Lemma bubblesort_correct : is_a_sorting_algorithm (bubblesort).
+(* Paste these examples into the ZX visualizer once simplified, equivs are clearly not true just to make a prop *)
+Example bubblesort_test0 : (create_arbitrary_swap [1%nat;2%nat;3%nat] [3%nat;2%nat;1%nat]) ∝ n_wire 3.
 Proof.
-intros l; induction l.
-Admitted. *)
+  eval_bubblsort_swap.
+Abort.
+
+Example bubblesort_test1 : (create_arbitrary_swap [] []) ∝ n_wire 0.
+Proof.
+  eval_bubblsort_swap.
+Abort.
+
+Example bubblesort_test2 : (create_arbitrary_swap [1%nat] [1%nat]) ∝ n_wire 1.
+Proof.
+  eval_bubblsort_swap.
+Abort.
+
+Example bubblesort_test3 : (create_arbitrary_swap [1%nat;7%nat;9%nat;3%nat] [3%nat;1%nat;9%nat;7%nat]) ∝ n_wire 4.
+Proof.
+  eval_bubblsort_swap.
+Abort.
+
+(* Semantic proof section here *)
 
 
 (* Full translation *)
@@ -242,21 +229,20 @@ Inductive zx_color : Type :=
   | Z_typ
 .
 
-(* Prob can simplify to mostly just be nats *)
 Record zx_node := mk_node
 { id_no : nat;
   color : zx_color;
   angle : R 
 }.
 
-Definition dummy_node := (mk_node 0%nat X_typ R0).
-(* 
-Definition eqb_zx_node (node1 node2 : zx_node) : bool :=
-  (id_no node1) =? (id_no node2). *)
+Definition dummy_node := (mk_node 0%nat X_typ R0). 
 
 Inductive zx_output_node : nat -> Type :=
   | Outp (n : nat) : zx_output_node n.
 
+(* Inputs, outputs, and nodes are all disjoint, with unique nat assignments *)
+(* Mapping corresponds to nodes exactly with id_no information lining up *)
+(* EDGE RULES HERE *)
 Record zx_graph := mk_graph
 { mapping : list zx_node;
   inputs : list nat;
@@ -298,19 +284,6 @@ Definition flatten_list_of_pairs {A} (l : list (A * A)) : list A :=
 Definition join_list_partition {A} (l : list A * list A) : list A :=
   fst l ++ snd l.
 
-(* Fixpoint largest_subset_and_rest_pool (lsplit lpool : list nat) : list nat * list nat  :=
-  match lsplit with
-  | [] => ([], lpool)
-  | x::xs =>  if (inb_zx_node_list lpool x) then 
-                match (largest_subset_and_rest_pool xs (remove_one Nat.eq_dec x lpool)) with
-                | (l1, l2) => (x :: l1, l2)
-                end
-              else
-                match (largest_subset_and_rest_pool xs lpool) with
-                | (l1, l2) => (l1, l2)
-                end
-  end. *)
-
 (*  Given two lists, lsplit (list to be split), and lpool, returns 
     a pair of lists, the left list is elements of lsplit that are in lpool
     , and the right is those that are not. This accounts for duplicates,
@@ -331,9 +304,6 @@ Fixpoint largest_subset_and_rest_split (lsplit lpool : list nat) : list nat * li
 (* Test more? *)
 (* Compute (largest_subset_and_rest_split [1%nat; 2%nat; 3%nat; 4%nat; 4%nat] [4%nat; 5%nat; 4%nat; 3%nat]). *)
 
-(* Definition zx_node_list_to_ids (l : list zx_node) : list nat :=
-  map (fun n => id_no n) l. *)
-
 
 Definition get_connections (G : zx_graph) (node : nat) : list (nat * nat) :=
   filter (fun n => orb (node =? (fst n)) (node =? (snd n))) (edges G).
@@ -352,23 +322,6 @@ Definition get_self_edges (G : zx_graph) : list (nat * nat) :=
 
 Definition removed_self_edges (G : zx_graph) : list (nat * nat) :=
   snd (partition_self_edges G).
-
-
-(* Fixpoint get_input_state_cleaned_aux (edges : list (nat * nat)) (inputs : list nat) (prev : option nat) : list nat :=
-  match inputs, prev with 
-  | [], Some i => [i]
-  | [], _ => []
-  | i::ins, Some i' => if (inb_zx_edge_list edges (i, i')) then
-                        get_input_state_cleaned_aux edges ins None else
-                        i'::get_input_state_cleaned_aux edges ins (Some i)
-  | i::ins, _ => get_input_state_cleaned_aux edges ins (Some i)
-  end.
-
-Definition get_input_state_cleaned (G : zx_graph) : list nat :=
-  get_input_state_cleaned_aux (edges G) (inputs G) None.
-
-Definition get_output_state_cleaned (G : zx_graph) : list nat :=
-  get_input_state_cleaned_aux (edges G) (outputs G) None. *)
 
 Definition get_edges_within_boundary_state (G : zx_graph) (b_state : list nat) : list (nat * nat) :=
   filter (fun e => match e with (e1, e2) => 
@@ -429,11 +382,6 @@ Definition get_rest_cur_state (G : zx_graph) (cur_state : list nat) (cur_node : 
 Definition get_new_state (G : zx_graph) (cur_state : list nat) (cur_node : nat) : list nat :=
   (repeat cur_node (length (get_cur_outputs G cur_state cur_node))) ++ 
   (get_rest_cur_state G cur_state cur_node).
-
-(* Lemma build_swap_structure_aux : forall l, length l = length (zx_node_list_to_ids l).
-Proof.
-  intros; unfold zx_node_list_to_ids; apply eq_sym; apply map_length.
-Qed. *)
 
 
 Lemma largest_subset_and_rest_split_length : 
@@ -511,8 +459,7 @@ Definition one_node_translate (G : zx_graph) (self_edges : list (nat * nat)) (cu
   (build_swap_structure G cur_state cur_node) ⟷ (build_node_structure G self_edges cur_state cur_node). 
 
 
-
-
+(* Dummys could be replaced *)
 Definition dummy_spider (n m : nat) : ZX n m := X_Spider n m R0.
 
 Fixpoint build_n_capcup (n : nat) (cup : bool) : ZX (if cup then Nat.double n else 0) (if cup then 0 else Nat.double n).
@@ -692,7 +639,6 @@ Local Hint Unfold
   one_node_translate
   build_node_structure
   build_swap_structure
-  create_arbitrary_swap
   zx_node_id_to_spider
   get_self_edges_by_id
   add_k_self_loops_to_spider
@@ -713,9 +659,6 @@ Local Hint Unfold
   remove_loops_from_output
   remove_loops_from_output_aux
   inb_zx_node_list
-  arbitrary_swap_from_swaplist
-  pad_top
-  pad_bot
   : graph_translate_eval_db.
 
 Ltac eval_graph_translation :=
@@ -727,7 +670,7 @@ Ltac eval_graph_translation :=
     cleanup_zx;
     simpl)
   .
-
+(* Need to update tactic *)
 
 Definition node0 := mk_node 9%nat X_typ R0.
 Definition node1 := mk_node 4%nat X_typ R1.
